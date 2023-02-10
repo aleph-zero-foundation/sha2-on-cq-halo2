@@ -2,9 +2,11 @@ use super::circuit::{Any, Column};
 use crate::{
     arithmetic::CurveAffine,
     helpers::{
-        polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice, CurveRead,
+        polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice,
+        SerdeCurveAffine, SerdePrimeField,
     },
     poly::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial},
+    SerdeFormat,
 };
 use ff::PrimeField;
 
@@ -87,19 +89,27 @@ impl<C: CurveAffine> VerifyingKey<C> {
         &self.commitments
     }
 
-    pub(crate) fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+    pub(crate) fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat)
+    where
+        C: SerdeCurveAffine,
+    {
         for commitment in &self.commitments {
-            writer.write_all(commitment.to_bytes().as_ref())?;
+            commitment.write(writer, format);
         }
-
-        Ok(())
     }
 
-    pub(crate) fn read<R: io::Read>(reader: &mut R, argument: &Argument) -> io::Result<Self> {
+    pub(crate) fn read<R: io::Read>(
+        reader: &mut R,
+        argument: &Argument,
+        format: SerdeFormat,
+    ) -> Self
+    where
+        C: SerdeCurveAffine,
+    {
         let commitments = (0..argument.columns.len())
-            .map(|_| C::read(reader))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(VerifyingKey { commitments })
+            .map(|_| C::read(reader, format))
+            .collect();
+        VerifyingKey { commitments }
     }
 
     pub(crate) fn bytes_length(&self) -> usize {
@@ -115,27 +125,31 @@ pub(crate) struct ProvingKey<C: CurveAffine> {
     pub(super) cosets: Vec<Polynomial<C::Scalar, ExtendedLagrangeCoeff>>,
 }
 
-impl<C: CurveAffine> ProvingKey<C> {
+impl<C: SerdeCurveAffine> ProvingKey<C>
+where
+    C::Scalar: SerdePrimeField,
+{
     /// Reads proving key for a single permutation argument from buffer using `Polynomial::read`.  
-    pub(super) fn read<R: io::Read>(reader: &mut R) -> io::Result<Self> {
-        let permutations = read_polynomial_vec(reader)?;
-        let polys = read_polynomial_vec(reader)?;
-        let cosets = read_polynomial_vec(reader)?;
-        Ok(ProvingKey {
+    pub(super) fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> Self {
+        let permutations = read_polynomial_vec(reader, format);
+        let polys = read_polynomial_vec(reader, format);
+        let cosets = read_polynomial_vec(reader, format);
+        ProvingKey {
             permutations,
             polys,
             cosets,
-        })
+        }
     }
 
     /// Writes proving key for a single permutation argument to buffer using `Polynomial::write`.  
-    pub(super) fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        write_polynomial_slice(&self.permutations, writer)?;
-        write_polynomial_slice(&self.polys, writer)?;
-        write_polynomial_slice(&self.cosets, writer)?;
-        Ok(())
+    pub(super) fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) {
+        write_polynomial_slice(&self.permutations, writer, format);
+        write_polynomial_slice(&self.polys, writer, format);
+        write_polynomial_slice(&self.cosets, writer, format);
     }
+}
 
+impl<C: CurveAffine> ProvingKey<C> {
     /// Gets the total number of bytes in the serialization of `self`
     pub(super) fn bytes_length(&self) -> usize {
         polynomial_slice_byte_length(&self.permutations)

@@ -1,7 +1,7 @@
 use ff::BatchInvert;
 use halo2_proofs::{
     arithmetic::{CurveAffine, FieldExt},
-    circuit::{floor_planner::V1, Layouter, Value},
+    circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::{metadata, FailureLocation, MockProver, VerifyFailure},
     halo2curves::pasta::EqAffine,
     plonk::*,
@@ -137,7 +137,7 @@ impl<F: FieldExt, const W: usize, const H: usize> MyCircuit<F, W, H> {
 
 impl<F: FieldExt, const W: usize, const H: usize> Circuit<F> for MyCircuit<F, W, H> {
     type Config = MyConfig<W>;
-    type FloorPlanner = V1;
+    type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
         Self::default()
@@ -152,9 +152,7 @@ impl<F: FieldExt, const W: usize, const H: usize> Circuit<F> for MyCircuit<F, W,
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let theta = layouter.get_challenge(config.theta);
-        let gamma = layouter.get_challenge(config.gamma);
-
+        println!("Calling synthesize function");
         layouter.assign_region(
             || "Shuffle original into shuffled",
             |mut region| {
@@ -174,10 +172,8 @@ impl<F: FieldExt, const W: usize, const H: usize> Circuit<F> for MyCircuit<F, W,
                 {
                     for (offset, &value) in values.transpose_array().iter().enumerate() {
                         region.assign_advice(
-                            || format!("original[{}][{}]", idx, offset),
-                            column,
-                            offset,
-                            || value,
+                            // || format!("original[{}][{}]", idx, offset),
+                            column, offset, value,
                         )?;
                     }
                 }
@@ -189,13 +185,15 @@ impl<F: FieldExt, const W: usize, const H: usize> Circuit<F> for MyCircuit<F, W,
                 {
                     for (offset, &value) in values.transpose_array().iter().enumerate() {
                         region.assign_advice(
-                            || format!("shuffled[{}][{}]", idx, offset),
-                            column,
-                            offset,
-                            || value,
+                            // || format!("shuffled[{}][{}]", idx, offset),
+                            column, offset, value,
                         )?;
                     }
                 }
+
+                region.next_phase()?;
+                let theta = region.get_challenge(config.theta);
+                let gamma = region.get_challenge(config.gamma);
 
                 // Second phase
                 let z = self.original.zip(self.shuffled).zip(theta).zip(gamma).map(
@@ -240,10 +238,8 @@ impl<F: FieldExt, const W: usize, const H: usize> Circuit<F> for MyCircuit<F, W,
                 );
                 for (offset, value) in z.transpose_vec(H + 1).into_iter().enumerate() {
                     region.assign_advice(
-                        || format!("z[{}]", offset),
-                        config.z,
-                        offset,
-                        || value,
+                        // || format!("z[{}]", offset),
+                        config.z, offset, value,
                     )?;
                 }
 
@@ -292,6 +288,7 @@ fn test_prover<C: CurveAffine, const W: usize, const H: usize>(
     let proof = {
         let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
 
+        println!("Begin create proof");
         create_proof::<IPACommitmentScheme<C>, ProverIPA<C>, _, _, _, _>(
             &params,
             &pk,
@@ -301,6 +298,7 @@ fn test_prover<C: CurveAffine, const W: usize, const H: usize>(
             &mut transcript,
         )
         .expect("proof generation should not fail");
+        println!("End create proof");
 
         transcript.finalize()
     };

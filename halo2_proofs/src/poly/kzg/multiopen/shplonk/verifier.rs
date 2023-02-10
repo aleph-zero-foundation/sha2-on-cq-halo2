@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::io::Read;
 
 use super::ChallengeY;
@@ -7,6 +8,7 @@ use crate::arithmetic::{
     eval_polynomial, evaluate_vanishing_polynomial, lagrange_interpolate, powers, CurveAffine,
     FieldExt,
 };
+use crate::helpers::SerdeCurveAffine;
 use crate::poly::commitment::Verifier;
 use crate::poly::commitment::MSM;
 use crate::poly::kzg::commitment::{KZGCommitmentScheme, ParamsKZG};
@@ -33,8 +35,12 @@ pub struct VerifierSHPLONK<'params, E: Engine> {
     params: &'params ParamsKZG<E>,
 }
 
-impl<'params, E: MultiMillerLoop + Debug> Verifier<'params, KZGCommitmentScheme<E>>
-    for VerifierSHPLONK<'params, E>
+impl<'params, E> Verifier<'params, KZGCommitmentScheme<E>> for VerifierSHPLONK<'params, E>
+where
+    E: MultiMillerLoop + Debug,
+    E::G1Affine: SerdeCurveAffine,
+    E::G2Affine: SerdeCurveAffine,
+    E::Scalar: Hash,
 {
     type Guard = GuardKZG<'params, E>;
     type MSMAccumulator = DualMSM<'params, E>;

@@ -5,6 +5,7 @@
 use crate::arithmetic::parallelize;
 use crate::helpers::SerdePrimeField;
 use crate::plonk::Assigned;
+use crate::SerdeFormat;
 
 use ff::PrimeField;
 use group::ff::{BatchInvert, Field};
@@ -146,30 +147,66 @@ impl<F, B> Polynomial<F, B> {
     }
 }
 
-impl<F: PrimeField, B> Polynomial<F, B> {
+impl<F: SerdePrimeField, B> Polynomial<F, B> {
     /// Reads polynomial from buffer using `SerdePrimeField::read`.  
-    pub(crate) fn read<R: io::Read>(reader: &mut R) -> io::Result<Self> {
-        let mut poly_len_be_bytes = [0u8; 4];
-        reader.read_exact(&mut poly_len_be_bytes)?;
-        let poly_len = u32::from_be_bytes(poly_len_be_bytes);
-
-        (0..poly_len)
-            .map(|_| F::read(reader))
-            .collect::<io::Result<Vec<_>>>()
-            .map(|values| Self {
-                values,
-                _marker: PhantomData,
-            })
+    pub(crate) fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> Self {
+        let mut poly_len = [0u8; 4];
+        reader.read_exact(&mut poly_len).unwrap();
+        let poly_len = u32::from_be_bytes(poly_len);
+        Self {
+            values: (0..poly_len).map(|_| F::read(reader, format)).collect(),
+            _marker: PhantomData,
+        }
     }
 
     /// Writes polynomial to buffer using `SerdePrimeField::write`.  
-    pub(crate) fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        writer.write_all(&(self.values.len() as u32).to_be_bytes())?;
+    pub(crate) fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) {
+        writer
+            .write_all(&(self.values.len() as u32).to_be_bytes())
+            .unwrap();
         for value in self.values.iter() {
-            value.write(writer)?;
+            value.write(writer, format);
         }
-        Ok(())
     }
+}
+
+/// Invert each polynomial in place for memory efficiency
+pub(crate) fn batch_invert_assigned_ref<F: FieldExt>(
+    assigned: Vec<&Polynomial<Assigned<F>, LagrangeCoeff>>,
+) -> Vec<Polynomial<F, LagrangeCoeff>> {
+    if assigned.is_empty() {
+        return vec![];
+    }
+    let n = assigned[0].num_coeffs();
+    // 1d vector better for memory allocation
+    let mut assigned_denominators: Vec<_> = assigned
+        .iter()
+        .flat_map(|f| f.iter().map(|value| value.denominator()))
+        .collect();
+
+    assigned_denominators
+        .iter_mut()
+        // If the denominator is trivial, we can skip it, reducing the
+        // size of the batch inversion.
+        .filter_map(|d| d.as_mut())
+        .batch_invert();
+
+    assigned
+        .iter()
+        .zip(assigned_denominators.chunks(n))
+        .map(|(poly, inv_denoms)| {
+            debug_assert_eq!(inv_denoms.len(), poly.values.len());
+            Polynomial {
+                values: poly
+                    .values
+                    .iter()
+                    .zip(inv_denoms.iter())
+                    .map(|(a, inv_den)| a.numerator() * inv_den.unwrap_or(F::one()))
+                    .collect(),
+                _marker: poly._marker,
+            }
+        })
+        .collect()
 }
 
 pub(crate) fn batch_invert_assigned<F: FieldExt>(

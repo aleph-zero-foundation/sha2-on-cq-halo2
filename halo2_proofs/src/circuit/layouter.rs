@@ -6,8 +6,10 @@ use std::fmt;
 
 use ff::Field;
 
-use super::{Cell, RegionIndex, Value};
-use crate::plonk::{Advice, Any, Assigned, Column, Error, Fixed, Instance, Selector, TableColumn};
+use super::{AssignedCell, Cell, RegionIndex, Value};
+use crate::plonk::{
+    Advice, Any, Assigned, Challenge, Column, Error, Fixed, Instance, Selector, TableColumn,
+};
 
 /// Helper trait for implementing a custom [`Layouter`].
 ///
@@ -49,13 +51,13 @@ pub trait RegionLayouter<F: Field>: fmt::Debug {
     ) -> Result<(), Error>;
 
     /// Assign an advice column value (witness)
-    fn assign_advice<'v>(
-        &'v mut self,
-        annotation: &'v (dyn Fn() -> String + 'v),
+    fn assign_advice<'b, 'v>(
+        &'b mut self,
+        // annotation: &'v (dyn Fn() -> String + 'v),
         column: Column<Advice>,
         offset: usize,
-        to: &'v mut (dyn FnMut() -> Value<Assigned<F>> + 'v),
-    ) -> Result<Cell, Error>;
+        to: Value<Assigned<F>>, // &'v mut (dyn FnMut() -> Value<Assigned<F>> + 'v),
+    ) -> Result<AssignedCell<&'v Assigned<F>, F>, Error>;
 
     /// Assigns a constant value to the column `advice` at `offset` within this region.
     ///
@@ -85,13 +87,13 @@ pub trait RegionLayouter<F: Field>: fmt::Debug {
     ) -> Result<(Cell, Value<F>), Error>;
 
     /// Assign a fixed value
-    fn assign_fixed<'v>(
-        &'v mut self,
-        annotation: &'v (dyn Fn() -> String + 'v),
+    fn assign_fixed(
+        &mut self,
+        // annotation: &'v (dyn Fn() -> String + 'v),
         column: Column<Fixed>,
         offset: usize,
-        to: &'v mut (dyn FnMut() -> Value<Assigned<F>> + 'v),
-    ) -> Result<Cell, Error>;
+        to: Assigned<F>,
+    ) -> Cell;
 
     /// Constrains a cell to have a constant value.
     ///
@@ -101,7 +103,16 @@ pub trait RegionLayouter<F: Field>: fmt::Debug {
     /// Constraint two cells to have the same value.
     ///
     /// Returns an error if either of the cells is not within the given permutation.
-    fn constrain_equal(&mut self, left: Cell, right: Cell) -> Result<(), Error>;
+    fn constrain_equal(&mut self, left: &Cell, right: &Cell);
+
+    /// Queries the value of the given challenge.
+    ///
+    /// Returns `Value::unknown()` if the current synthesis phase is before the challenge can be queried.
+    fn get_challenge(&self, challenge: Challenge) -> Value<F>;
+
+    /// Commit advice columns in current phase and squeeze challenges.
+    /// This can be called DURING synthesize.
+    fn next_phase(&mut self);
 }
 
 /// Helper trait for implementing a custom [`Layouter`].
@@ -125,6 +136,7 @@ pub trait TableLayouter<F: Field>: fmt::Debug {
 /// The shape of a region. For a region at a certain index, we track
 /// the set of columns it uses as well as the number of rows it uses.
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct RegionShape {
     pub(super) region_index: RegionIndex,
     pub(super) columns: HashSet<RegionColumn>,
@@ -170,6 +182,7 @@ impl PartialOrd for RegionColumn {
     }
 }
 
+/*
 impl RegionShape {
     /// Create a new `RegionShape` for a region at `region_index`.
     pub fn new(region_index: RegionIndex) -> Self {
@@ -211,11 +224,11 @@ impl<F: Field> RegionLayouter<F> for RegionShape {
 
     fn assign_advice<'v>(
         &'v mut self,
-        _: &'v (dyn Fn() -> String + 'v),
+        //_: &'v (dyn Fn() -> String + 'v),
         column: Column<Advice>,
         offset: usize,
-        _to: &'v mut (dyn FnMut() -> Value<Assigned<F>> + 'v),
-    ) -> Result<Cell, Error> {
+        _to: Value<Assigned<F>>, // &'v mut (dyn FnMut() -> Value<Assigned<F>> + 'v),
+    ) -> Result<AssignedCell<&Assigned<F>, F>, Error> {
         self.columns.insert(Column::<Any>::from(column).into());
         self.row_count = cmp::max(self.row_count, offset + 1);
 
@@ -223,7 +236,8 @@ impl<F: Field> RegionLayouter<F> for RegionShape {
             region_index: self.region_index,
             row_offset: offset,
             column: column.into(),
-        })
+        });
+        todo!()
     }
 
     fn assign_advice_from_constant<'v>(
@@ -234,7 +248,7 @@ impl<F: Field> RegionLayouter<F> for RegionShape {
         constant: Assigned<F>,
     ) -> Result<Cell, Error> {
         // The rest is identical to witnessing an advice cell.
-        self.assign_advice(annotation, column, offset, &mut || Value::known(constant))
+        self.assign_advice(column, offset, Value::known(constant))
     }
 
     fn assign_advice_from_instance<'v>(
@@ -284,4 +298,14 @@ impl<F: Field> RegionLayouter<F> for RegionShape {
         // Equality constraints don't affect the region shape.
         Ok(())
     }
+
+    fn get_challenge(&self, _: Challenge) -> Value<F> {
+        Value::unknown()
+    }
+
+    fn next_phase(&mut self) -> Result<(), Error> {
+        // Region shapes don't care about phases.
+        Ok(())
+    }
 }
+*/

@@ -64,6 +64,8 @@ impl<C: ColumnType> PartialOrd for Column<C> {
 }
 
 pub(crate) mod sealed {
+    use std::ops::Add;
+
     /// Phase of advice column
     #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
     pub struct Phase(pub(super) u8);
@@ -71,6 +73,13 @@ pub(crate) mod sealed {
     impl Phase {
         pub fn prev(&self) -> Option<Phase> {
             self.0.checked_sub(1).map(Phase)
+        }
+        pub fn next(&self) -> Phase {
+            assert!(self.0 < 2, "The API only supports three phases");
+            Phase(self.0 + 1)
+        }
+        pub fn to_u8(&self) -> u8 {
+            self.0
         }
     }
 
@@ -550,32 +559,22 @@ pub trait Assignment<F: Field> {
     fn query_instance(&self, column: Column<Instance>, row: usize) -> Result<Value<F>, Error>;
 
     /// Assign an advice column value (witness)
-    fn assign_advice<V, VR, A, AR>(
-        &mut self,
-        annotation: A,
+    fn assign_advice<'r, 'v>(
+        //<V, VR, A, AR>(
+        &'r mut self,
+        // annotation: A,
         column: Column<Advice>,
         row: usize,
-        to: V,
-    ) -> Result<(), Error>
-    where
-        V: FnOnce() -> Value<VR>,
-        VR: Into<Assigned<F>>,
-        A: FnOnce() -> AR,
-        AR: Into<String>;
+        to: Value<Assigned<F>>, // V,
+    ) -> Result<Value<&'v Assigned<F>>, Error>;
+    // where
+    // V: FnOnce() -> Value<VR>,
+    // VR: Into<Assigned<F>>,
+    // A: FnOnce() -> AR,
+    // AR: Into<String>;
 
     /// Assign a fixed value
-    fn assign_fixed<V, VR, A, AR>(
-        &mut self,
-        annotation: A,
-        column: Column<Fixed>,
-        row: usize,
-        to: V,
-    ) -> Result<(), Error>
-    where
-        V: FnOnce() -> Value<VR>,
-        VR: Into<Assigned<F>>,
-        A: FnOnce() -> AR,
-        AR: Into<String>;
+    fn assign_fixed(&mut self, column: Column<Fixed>, row: usize, to: Assigned<F>);
 
     /// Assign two cells to have the same value
     fn copy(
@@ -584,7 +583,7 @@ pub trait Assignment<F: Field> {
         left_row: usize,
         right_column: Column<Any>,
         right_row: usize,
-    ) -> Result<(), Error>;
+    );
 
     /// Fills a fixed `column` starting from the given `row` with value `to`.
     fn fill_from_row(
@@ -615,6 +614,10 @@ pub trait Assignment<F: Field> {
     ///
     /// [`Layouter::namespace`]: crate::circuit::Layouter#method.namespace
     fn pop_namespace(&mut self, gadget_name: Option<String>);
+
+    /// Commit advice columns in current phase and squeeze challenges. This can be
+    /// called DURING synthesize.
+    fn next_phase(&mut self) {}
 }
 
 /// A floor planning strategy for a circuit.
@@ -925,38 +928,67 @@ impl<F: Field> Expression<F> {
         }
     }
 
+    fn write_identifier<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            Expression::Constant(scalar) => write!(writer, "{:?}", scalar),
+            Expression::Selector(selector) => write!(writer, "selector[{}]", selector.0),
+            Expression::Fixed(query) => {
+                write!(
+                    writer,
+                    "fixed[{}][{}]",
+                    query.column_index, query.rotation.0
+                )
+            }
+            Expression::Advice(query) => {
+                write!(
+                    writer,
+                    "advice[{}][{}]",
+                    query.column_index, query.rotation.0
+                )
+            }
+            Expression::Instance(query) => {
+                write!(
+                    writer,
+                    "instance[{}][{}]",
+                    query.column_index, query.rotation.0
+                )
+            }
+            Expression::Challenge(challenge) => {
+                write!(writer, "challenge[{}]", challenge.index())
+            }
+            Expression::Negated(a) => {
+                writer.write_all(b"(-")?;
+                a.write_identifier(writer)?;
+                writer.write_all(b")")
+            }
+            Expression::Sum(a, b) => {
+                writer.write_all(b"(")?;
+                a.write_identifier(writer)?;
+                writer.write_all(b"+")?;
+                b.write_identifier(writer)?;
+                writer.write_all(b")")
+            }
+            Expression::Product(a, b) => {
+                writer.write_all(b"(")?;
+                a.write_identifier(writer)?;
+                writer.write_all(b"*")?;
+                b.write_identifier(writer)?;
+                writer.write_all(b")")
+            }
+            Expression::Scaled(a, f) => {
+                a.write_identifier(writer)?;
+                write!(writer, "*{:?}", f)
+            }
+        }
+    }
+
     /// Identifier for this expression. Expressions with identical identifiers
     /// do the same calculation (but the expressions don't need to be exactly equal
     /// in how they are composed e.g. `1 + 2` and `2 + 1` can have the same identifier).
     pub fn identifier(&self) -> String {
-        match self {
-            Expression::Constant(scalar) => format!("{:?}", scalar),
-            Expression::Selector(selector) => format!("selector[{}]", selector.0),
-            Expression::Fixed(query) => {
-                format!("fixed[{}][{}]", query.column_index, query.rotation.0)
-            }
-            Expression::Advice(query) => {
-                format!("advice[{}][{}]", query.column_index, query.rotation.0)
-            }
-            Expression::Instance(query) => {
-                format!("instance[{}][{}]", query.column_index, query.rotation.0)
-            }
-            Expression::Challenge(challenge) => {
-                format!("challenge[{}]", challenge.index())
-            }
-            Expression::Negated(a) => {
-                format!("(-{})", a.identifier())
-            }
-            Expression::Sum(a, b) => {
-                format!("({}+{})", a.identifier(), b.identifier())
-            }
-            Expression::Product(a, b) => {
-                format!("({}*{})", a.identifier(), b.identifier())
-            }
-            Expression::Scaled(a, f) => {
-                format!("{}*{:?}", a.identifier(), f)
-            }
-        }
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        self.write_identifier(&mut cursor).unwrap();
+        String::from_utf8(cursor.into_inner()).unwrap()
     }
 
     /// Compute the degree of this polynomial

@@ -90,11 +90,22 @@ impl std::ops::Deref for RegionStart {
 #[derive(Clone, Copy, Debug)]
 pub struct Cell {
     /// Identifies the region in which this cell resides.
-    region_index: RegionIndex,
+    // region_index: RegionIndex,
     /// The relative offset of this cell within its region.
     row_offset: usize,
     /// The column of this cell.
     column: Column<Any>,
+}
+
+impl Cell {
+    /// Returns row offset
+    pub fn row_offset(&self) -> usize {
+        self.row_offset
+    }
+    /// Returns reference to column
+    pub fn column(&self) -> &Column<Any> {
+        &self.column
+    }
 }
 
 /// An assigned cell.
@@ -112,8 +123,16 @@ impl<V, F: Field> AssignedCell<V, F> {
     }
 
     /// Returns the cell.
-    pub fn cell(&self) -> Cell {
-        self.cell
+    pub fn cell(&self) -> &Cell {
+        &self.cell
+    }
+
+    pub fn row_offset(&self) -> usize {
+        self.cell.row_offset
+    }
+
+    pub fn column(&self) -> &Column<Any> {
+        &self.cell.column
     }
 }
 
@@ -141,30 +160,22 @@ impl<F: Field> AssignedCell<Assigned<F>, F> {
     }
 }
 
-impl<V: Clone, F: Field> AssignedCell<V, F>
-where
-    for<'v> Assigned<F>: From<&'v V>,
-{
+impl<'v, F: Field> AssignedCell<&'v Assigned<F>, F> {
     /// Copies the value to a given advice cell and constrains them to be equal.
     ///
     /// Returns an error if either this cell or the given cell are in columns
     /// where equality has not been enabled.
-    pub fn copy_advice<A, AR>(
+    pub fn copy_advice(
         &self,
-        annotation: A,
         region: &mut Region<'_, F>,
         column: Column<Advice>,
         offset: usize,
-    ) -> Result<Self, Error>
-    where
-        A: Fn() -> AR,
-        AR: Into<String>,
-    {
-        let assigned_cell =
-            region.assign_advice(annotation, column, offset, || self.value.clone())?;
-        region.constrain_equal(assigned_cell.cell(), self.cell())?;
-
-        Ok(assigned_cell)
+    ) -> AssignedCell<&'_ Assigned<F>, F> {
+        let assigned_cell = region
+            .assign_advice(column, offset, self.value.map(|v| *v))
+            .unwrap_or_else(|err| panic!("{err:?}"));
+        region.constrain_equal(&assigned_cell.cell, &self.cell);
+        assigned_cell
     }
 }
 
@@ -209,34 +220,30 @@ impl<'r, F: Field> Region<'r, F> {
     /// Assign an advice column value (witness).
     ///
     /// Even though `to` has `FnMut` bounds, it is guaranteed to be called at most once.
-    pub fn assign_advice<'v, V, VR, A, AR>(
-        &'v mut self,
-        annotation: A,
+    // The returned &'v Assigned<F> lives longer than the mutable borrow of &mut self
+    pub fn assign_advice<'v>(
+        //, V, VR, A, AR>(
+        &mut self,
+        //annotation: A,
         column: Column<Advice>,
         offset: usize,
-        mut to: V,
-    ) -> Result<AssignedCell<VR, F>, Error>
-    where
-        V: FnMut() -> Value<VR> + 'v,
-        for<'vr> Assigned<F>: From<&'vr VR>,
-        A: Fn() -> AR,
-        AR: Into<String>,
-    {
-        let mut value = Value::unknown();
-        let cell =
-            self.region
-                .assign_advice(&|| annotation().into(), column, offset, &mut || {
-                    let v = to();
-                    let value_f = v.to_field();
-                    value = v;
-                    value_f
-                })?;
+        to: Value<impl Into<Assigned<F>>>, // For now only accept Value<F>, later might change to Value<Assigned<F>> for batch inversion
+    ) -> Result<AssignedCell<&'v Assigned<F>, F>, Error> {
+        //let mut value = Value::unknown();
+        self.region.assign_advice(
+            //&|| annotation().into(),
+            column,
+            offset,
+            to.map(|v| v.into()),
+        )
 
+        /*
         Ok(AssignedCell {
             value,
             cell,
             _marker: PhantomData,
         })
+        */
     }
 
     /// Assigns a constant value to the column `advice` at `offset` within this region.
@@ -305,34 +312,21 @@ impl<'r, F: Field> Region<'r, F> {
     /// Assign a fixed value.
     ///
     /// Even though `to` has `FnMut` bounds, it is guaranteed to be called at most once.
-    pub fn assign_fixed<'v, V, VR, A, AR>(
-        &'v mut self,
-        annotation: A,
+    pub fn assign_fixed(
+        &mut self,
+        // annotation: A,
         column: Column<Fixed>,
         offset: usize,
-        mut to: V,
-    ) -> Result<AssignedCell<VR, F>, Error>
-    where
-        V: FnMut() -> Value<VR> + 'v,
-        for<'vr> Assigned<F>: From<&'vr VR>,
-        A: Fn() -> AR,
-        AR: Into<String>,
-    {
-        let mut value = Value::unknown();
-        let cell =
-            self.region
-                .assign_fixed(&|| annotation().into(), column, offset, &mut || {
-                    let v = to();
-                    let value_f = v.to_field();
-                    value = v;
-                    value_f
-                })?;
-
+        to: impl Into<Assigned<F>>,
+    ) -> Cell {
+        self.region.assign_fixed(column, offset, to.into())
+        /*
         Ok(AssignedCell {
             value,
             cell,
             _marker: PhantomData,
         })
+        */
     }
 
     /// Constrains a cell to have a constant value.
@@ -349,8 +343,21 @@ impl<'r, F: Field> Region<'r, F> {
     ///
     /// Returns an error if either of the cells are in columns where equality
     /// has not been enabled.
-    pub fn constrain_equal(&mut self, left: Cell, right: Cell) -> Result<(), Error> {
-        self.region.constrain_equal(left, right)
+    pub fn constrain_equal(&mut self, left: &Cell, right: &Cell) {
+        self.region.constrain_equal(left, right);
+    }
+
+    /// Queries the value of the given challenge.
+    ///
+    /// Returns `Value::unknown()` if the current synthesis phase is before the challenge can be queried.
+    pub fn get_challenge(&self, challenge: Challenge) -> Value<F> {
+        self.region.get_challenge(challenge)
+    }
+
+    /// Commit advice columns in current phase and squeeze challenges.
+    /// This can be called DURING synthesize.
+    pub fn next_phase(&mut self) {
+        self.region.next_phase();
     }
 }
 
@@ -416,7 +423,7 @@ pub trait Layouter<F: Field> {
     /// ```
     fn assign_region<A, AR, N, NR>(&mut self, name: N, assignment: A) -> Result<AR, Error>
     where
-        A: FnMut(Region<'_, F>) -> Result<AR, Error>,
+        A: FnOnce(Region<'_, F>) -> Result<AR, Error>,
         N: Fn() -> NR,
         NR: Into<String>;
 
@@ -436,12 +443,7 @@ pub trait Layouter<F: Field> {
 
     /// Constrains a [`Cell`] to equal an instance column's row value at an
     /// absolute position.
-    fn constrain_instance(
-        &mut self,
-        cell: Cell,
-        column: Column<Instance>,
-        row: usize,
-    ) -> Result<(), Error>;
+    fn constrain_instance(&mut self, cell: Cell, column: Column<Instance>, row: usize);
 
     /// Queries the value of the given challenge.
     ///
@@ -488,7 +490,7 @@ impl<'a, F: Field, L: Layouter<F> + 'a> Layouter<F> for NamespacedLayouter<'a, F
 
     fn assign_region<A, AR, N, NR>(&mut self, name: N, assignment: A) -> Result<AR, Error>
     where
-        A: FnMut(Region<'_, F>) -> Result<AR, Error>,
+        A: FnOnce(Region<'_, F>) -> Result<AR, Error>,
         N: Fn() -> NR,
         NR: Into<String>,
     {
@@ -504,13 +506,8 @@ impl<'a, F: Field, L: Layouter<F> + 'a> Layouter<F> for NamespacedLayouter<'a, F
         self.0.assign_table(name, assignment)
     }
 
-    fn constrain_instance(
-        &mut self,
-        cell: Cell,
-        column: Column<Instance>,
-        row: usize,
-    ) -> Result<(), Error> {
-        self.0.constrain_instance(cell, column, row)
+    fn constrain_instance(&mut self, cell: Cell, column: Column<Instance>, row: usize) {
+        self.0.constrain_instance(cell, column, row);
     }
 
     fn get_challenge(&self, challenge: Challenge) -> Value<F> {

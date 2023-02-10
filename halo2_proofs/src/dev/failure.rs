@@ -10,6 +10,8 @@ use super::{
     util::{self, AnyQuery},
     MockProver, Region,
 };
+use crate::dev::{AdviceCellValue, CellValue};
+use crate::plonk::Assigned;
 use crate::{
     dev::Value,
     plonk::{Any, Column, ConstraintSystem, Expression, Gate},
@@ -90,6 +92,9 @@ impl FailureLocation {
             .iter()
             .enumerate()
             .find(|(_, r)| {
+                if r.rows.is_none() {
+                    return false;
+                }
                 let (start, end) = r.rows.unwrap();
                 // We match the region if any input columns overlap, rather than all of
                 // them, because matching complex selector columns is hard. As long as
@@ -398,18 +403,18 @@ fn render_lookup<F: FieldExt>(
 
     // Recover the fixed columns from the table expressions. We don't allow composite
     // expressions for the table side of lookups.
-    let table_columns = lookup.table_expressions.iter().map(|expr| {
+    let lookup_columns = lookup.table_expressions.iter().map(|expr| {
         expr.evaluate(
             &|_| panic!("no constants in table expressions"),
             &|_| panic!("no selectors in table expressions"),
             &|query| format!("F{}", query.column_index),
-            &|_| panic!("no advice columns in table expressions"),
-            &|_| panic!("no instance columns in table expressions"),
-            &|_| panic!("no challenges in table expressions"),
-            &|_| panic!("no negations in table expressions"),
-            &|_, _| panic!("no sums in table expressions"),
-            &|_, _| panic!("no products in table expressions"),
-            &|_, _| panic!("no scaling in table expressions"),
+            &|query| format! {"A{}", query.column_index},
+            &|query| format! {"I{}", query.column_index},
+            &|challenge| format! {"C{}", challenge.index()},
+            &|query| format! {"-{}", query},
+            &|a, b| format! {"{} + {}", a,b},
+            &|a, b| format! {"{} * {}", a,b},
+            &|a, b| format! {"{} * {:?}", a, b},
         )
     });
 
@@ -441,20 +446,36 @@ fn render_lookup<F: FieldExt>(
         eprint!("{}L{}", if i == 0 { "" } else { ", " }, i);
     }
     eprint!(") ∉ (");
-    for (i, column) in table_columns.enumerate() {
+    for (i, column) in lookup_columns.enumerate() {
         eprint!("{}{}", if i == 0 { "" } else { ", " }, column);
     }
     eprintln!(")");
 
     eprintln!();
     eprintln!("  Lookup '{}' inputs:", name);
+    let advice = prover
+        .advice
+        .iter()
+        .map(|advice| {
+            advice
+                .iter()
+                .map(|rc| match rc {
+                    AdviceCellValue::Assigned(a) => CellValue::Assigned(match a.as_ref() {
+                        Assigned::Trivial(a) => *a,
+                        _ => unreachable!(),
+                    }),
+                    AdviceCellValue::Poison(i) => CellValue::Poison(*i),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
     for (i, input) in lookup.input_expressions.iter().enumerate() {
         // Fetch the cell values (since we don't store them in VerifyFailure::Lookup).
         let cell_values = input.evaluate(
             &|_| BTreeMap::default(),
             &|_| panic!("virtual selectors are removed during optimization"),
             &cell_value(&util::load(n, row, &cs.fixed_queries, &prover.fixed)),
-            &cell_value(&util::load(n, row, &cs.advice_queries, &prover.advice)),
+            &cell_value(&util::load(n, row, &cs.advice_queries, &advice)),
             &cell_value(&util::load_instance(
                 n,
                 row,

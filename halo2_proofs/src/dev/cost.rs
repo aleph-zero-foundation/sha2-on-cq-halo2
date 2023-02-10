@@ -73,20 +73,20 @@ impl<F: Field> Assignment<F> for Assembly {
         Ok(Value::unknown())
     }
 
-    fn assign_advice<V, VR, A, AR>(
+    fn assign_advice(
+        //<V, VR, A, AR>(
         &mut self,
-        _: A,
+        //_: A,
         _: Column<Advice>,
         _: usize,
-        _: V,
-    ) -> Result<(), Error>
-    where
+        to: Value<Assigned<F>>,
+    ) -> Result<Value<&Assigned<F>>, Error>
+/*where
         V: FnOnce() -> Value<VR>,
         VR: Into<Assigned<F>>,
         A: FnOnce() -> AR,
-        AR: Into<String>,
-    {
-        Ok(())
+        AR: Into<String>,*/ {
+        Ok(to.as_ref())
     }
 
     fn assign_fixed<V, VR, A, AR>(

@@ -85,8 +85,8 @@ impl<G: Group> EvaluationDomain<G> {
         {
             // Compute the evaluations of t(X) = X^n - 1 in the coset evaluation domain.
             // We don't have to compute all of them, because it will repeat.
-            let orig = G::Scalar::ZETA.pow_vartime(&[n as u64, 0, 0, 0]);
-            let step = extended_omega.pow_vartime(&[n as u64, 0, 0, 0]);
+            let orig = G::Scalar::ZETA.pow_vartime([n]);
+            let step = extended_omega.pow_vartime([n]);
             let mut cur = orig;
             loop {
                 t_evaluations.push(cur);
@@ -145,6 +145,18 @@ impl<G: Group> EvaluationDomain<G> {
     /// coefficients of size `n`; panics if the provided vector is the wrong
     /// length.
     pub fn lagrange_from_vec(&self, values: Vec<G>) -> Polynomial<G, LagrangeCoeff> {
+        assert_eq!(values.len(), self.n as usize);
+
+        Polynomial {
+            values,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn lagrange_assigned_from_vec(
+        &self,
+        values: Vec<Assigned<G>>,
+    ) -> Polynomial<Assigned<G>, LagrangeCoeff> {
         assert_eq!(values.len(), self.n as usize);
 
         Polynomial {
