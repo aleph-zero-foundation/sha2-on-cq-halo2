@@ -1,6 +1,7 @@
 use ff::Field;
 use group::Curve;
 use rand_core::RngCore;
+use std::fmt::Debug;
 use std::iter;
 
 use super::{
@@ -9,35 +10,43 @@ use super::{
 };
 use crate::arithmetic::{compute_inner_product, CurveAffine, FieldExt};
 use crate::poly::commitment::{CommitmentScheme, Verifier};
+use crate::poly::kzg::commitment::KZGCommitmentScheme;
 use crate::poly::VerificationStrategy;
 use crate::poly::{
     commitment::{Blind, Params, MSM},
     Guard, VerifierQuery,
 };
 use crate::transcript::{read_n_points, read_n_scalars, EncodedChallenge, TranscriptRead};
+use halo2curves::pairing::MultiMillerLoop;
+use halo2curves::serde::SerdeObject;
 
-#[cfg(feature = "batch")]
-mod batch;
-#[cfg(feature = "batch")]
-pub use batch::BatchVerifier;
+// #[cfg(feature = "batch")]
+// mod batch;
+// #[cfg(feature = "batch")]
+// pub use batch::BatchVerifier;
 
 use crate::poly::commitment::ParamsVerifier;
 
 /// Returns a boolean indicating whether or not the proof is valid
 pub fn verify_proof<
     'params,
-    Scheme: CommitmentScheme,
-    V: Verifier<'params, Scheme>,
-    E: EncodedChallenge<Scheme::Curve>,
-    T: TranscriptRead<Scheme::Curve, E>,
-    Strategy: VerificationStrategy<'params, Scheme, V>,
+    E: MultiMillerLoop,
+    V: Verifier<'params, E>,
+    EC: EncodedChallenge<E::G1Affine>,
+    T: TranscriptRead<E::G1Affine, EC>,
+    Strategy: VerificationStrategy<'params, E, V>,
 >(
-    params: &'params Scheme::ParamsVerifier,
-    vk: &VerifyingKey<Scheme::Curve>,
+    params: &'params <KZGCommitmentScheme<E> as CommitmentScheme>::ParamsVerifier,
+    vk: &VerifyingKey<E::G1Affine>,
     strategy: Strategy,
-    instances: &[&[&[Scheme::Scalar]]],
+    instances: &[&[&[E::Scalar]]],
     transcript: &mut T,
-) -> Result<Strategy::Output, Error> {
+) -> Result<Strategy::Output, Error>
+where
+    E: Debug,
+    E::G1Affine: SerdeObject,
+    E::G2Affine: SerdeObject,
+{
     // Check that instances matches the expected number of instance columns
     for instances in instances.iter() {
         if instances.len() != vk.cs.num_instance_columns {
@@ -56,7 +65,7 @@ pub fn verify_proof<
                             return Err(Error::InstanceTooLarge);
                         }
                         let mut poly = instance.to_vec();
-                        poly.resize(params.n() as usize, Scheme::Scalar::zero());
+                        poly.resize(params.n() as usize, E::Scalar::zero());
                         let poly = vk.domain.lagrange_from_vec(poly);
 
                         Ok(params.commit_lagrange(&poly, Blind::default()).to_affine())
@@ -93,8 +102,8 @@ pub fn verify_proof<
     // Hash the prover's advice commitments into the transcript and squeeze challenges
     let (advice_commitments, challenges) = {
         let mut advice_commitments =
-            vec![vec![Scheme::Curve::default(); vk.cs.num_advice_columns]; num_proofs];
-        let mut challenges = vec![Scheme::Scalar::zero(); vk.cs.num_challenges];
+            vec![vec![E::G1Affine::default(); vk.cs.num_advice_columns]; num_proofs];
+        let mut challenges = vec![E::Scalar::zero(); vk.cs.num_challenges];
 
         for current_phase in vk.cs.phases() {
             for advice_commitments in advice_commitments.iter_mut() {
@@ -251,9 +260,9 @@ pub fn verify_proof<
             .l_i_range(*x, xn, (-((blinding_factors + 1) as i32))..=0);
         assert_eq!(l_evals.len(), 2 + blinding_factors);
         let l_last = l_evals[0];
-        let l_blind: Scheme::Scalar = l_evals[1..(1 + blinding_factors)]
+        let l_blind: E::Scalar = l_evals[1..(1 + blinding_factors)]
             .iter()
-            .fold(Scheme::Scalar::zero(), |acc, eval| acc + eval);
+            .fold(E::Scalar::zero(), |acc, eval| acc + eval);
         let l_0 = l_evals[1 + blinding_factors];
 
         // Compute the expected value of h(x)

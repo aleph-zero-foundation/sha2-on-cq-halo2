@@ -2,7 +2,9 @@ use crate::arithmetic::{
     best_fft, best_multiexp, g_to_lagrange, parallelize, CurveAffine, CurveExt, FieldExt, Group,
 };
 use crate::helpers::SerdeCurveAffine;
-use crate::poly::commitment::{Blind, CommitmentScheme, Params, ParamsProver, ParamsVerifier, MSM};
+use crate::poly::commitment::{
+    Blind, CommitmentScheme, PairingFriendlyCS, Params, ParamsProver, ParamsVerifier, MSM,
+};
 use crate::poly::{Coeff, LagrangeCoeff, Polynomial};
 use crate::SerdeFormat;
 
@@ -53,6 +55,13 @@ where
     fn read_params<R: io::Read>(reader: &mut R) -> io::Result<Self::ParamsProver> {
         ParamsKZG::read(reader)
     }
+}
+
+impl<E: Engine + Debug> PairingFriendlyCS for KZGCommitmentScheme<E>
+where
+    E::G1Affine: SerdeCurveAffine,
+    E::G2Affine: SerdeCurveAffine,
+{
 }
 
 impl<E: Engine + Debug> ParamsKZG<E> {

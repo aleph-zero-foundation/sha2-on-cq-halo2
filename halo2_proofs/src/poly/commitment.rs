@@ -1,4 +1,5 @@
 use super::{
+    kzg::commitment::KZGCommitmentScheme,
     query::{ProverQuery, VerifierQuery},
     strategy::Guard,
     Coeff, LagrangeCoeff, Polynomial,
@@ -7,6 +8,8 @@ use crate::poly::Error;
 use crate::transcript::{EncodedChallenge, TranscriptRead, TranscriptWrite};
 use ff::Field;
 use group::Curve;
+use halo2curves::pairing::MultiMillerLoop;
+use halo2curves::serde::SerdeObject;
 use halo2curves::{CurveAffine, CurveExt, FieldExt};
 use rand_core::RngCore;
 use std::{
@@ -151,10 +154,15 @@ pub trait Prover<'params, Scheme: CommitmentScheme> {
 }
 
 /// Common multi-open verifier interface for various commitment schemes
-pub trait Verifier<'params, Scheme: CommitmentScheme> {
+pub trait Verifier<'params, E: MultiMillerLoop>
+where
+    E: Debug,
+    E::G1Affine: SerdeObject,
+    E::G2Affine: SerdeObject,
+{
     /// Unfinalized verification result. This is returned in verification
     /// to allow developer to compress or combined verification results
-    type Guard: Guard<Scheme, MSMAccumulator = Self::MSMAccumulator>;
+    type Guard: Guard<KZGCommitmentScheme<E>, MSMAccumulator = Self::MSMAccumulator>;
 
     /// Accumulator fot comressed verification
     type MSMAccumulator;
@@ -163,13 +171,13 @@ pub trait Verifier<'params, Scheme: CommitmentScheme> {
     const QUERY_INSTANCE: bool;
 
     /// Creates new verifier instance
-    fn new(params: &'params Scheme::ParamsVerifier) -> Self;
+    fn new(params: &'params <KZGCommitmentScheme<E> as CommitmentScheme>::ParamsVerifier) -> Self;
 
     /// Process the proof and returns unfinished result named `Guard`
     fn verify_proof<
         'com,
-        E: EncodedChallenge<Scheme::Curve>,
-        T: TranscriptRead<Scheme::Curve, E>,
+        EC: EncodedChallenge<<KZGCommitmentScheme<E> as CommitmentScheme>::Curve>,
+        T: TranscriptRead<<KZGCommitmentScheme<E> as CommitmentScheme>::Curve, EC>,
         I,
     >(
         &self,
@@ -182,8 +190,11 @@ pub trait Verifier<'params, Scheme: CommitmentScheme> {
         I: IntoIterator<
                 Item = VerifierQuery<
                     'com,
-                    Scheme::Curve,
-                    <Scheme::ParamsVerifier as Params<'params, Scheme::Curve>>::MSM,
+                    <KZGCommitmentScheme<E> as CommitmentScheme>::Curve,
+                    <<KZGCommitmentScheme<E> as CommitmentScheme>::ParamsVerifier as Params<
+                        'params,
+                        <KZGCommitmentScheme<E> as CommitmentScheme>::Curve,
+                    >>::MSM,
                 >,
             > + Clone;
 }
@@ -243,4 +254,14 @@ impl<F: FieldExt> MulAssign<F> for Blind<F> {
     fn mul_assign(&mut self, rhs: F) {
         self.0 *= rhs;
     }
+}
+
+use halo2curves::pairing::{Engine, PairingCurveAffine};
+
+pub trait PairingFriendlyCS: CommitmentScheme {
+    // type Curve = CommitmentScheme<Curve = E::G1Affine>;
+    // fn batch_pairings(
+    //     &self,
+    //     &mut batcher: PairingBatcher
+    // );
 }

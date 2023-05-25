@@ -21,8 +21,8 @@ mod domain;
 mod query;
 mod strategy;
 
-/// Inner product argument commitment scheme
-pub mod ipa;
+// /// Inner product argument commitment scheme
+// pub mod ipa;
 
 /// KZG commitment scheme
 pub mod kzg;
