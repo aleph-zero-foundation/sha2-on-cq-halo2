@@ -19,7 +19,8 @@ mod test {
     };
     use ff::Field;
     use group::{Curve, Group};
-    use halo2curves::pairing::MultiMillerLoop;
+    use halo2curves::batch_pairing::PairingBatcher;
+    use halo2curves::pairing::{Engine, MillerLoopResult, MultiMillerLoop};
     use halo2curves::serde::SerdeObject;
     use halo2curves::CurveAffine;
     use rand_core::{OsRng, RngCore};
@@ -154,7 +155,7 @@ mod test {
 
         let mut transcript = T::init(proof);
 
-        let a = transcript.read_point().unwrap();
+        let a: <E as Engine>::G1Affine = transcript.read_point().unwrap();
         let b = transcript.read_point().unwrap();
         let c = transcript.read_point().unwrap();
 
@@ -191,7 +192,21 @@ mod test {
                 })
                 .unwrap();
 
-            assert_eq!(strategy.finalize(), !should_fail);
+            let mut pairing_batcher =
+                PairingBatcher::<E>::new(*transcript.squeeze_challenge_scalar::<()>());
+
+            strategy.merge_with_pairing_batcher(&mut pairing_batcher);
+
+            let batched_tuples = pairing_batcher.finalize();
+            let result = E::multi_miller_loop(
+                &batched_tuples
+                    .iter()
+                    .map(|(g1, g2)| (g1, g2))
+                    .collect::<Vec<_>>(),
+            );
+
+            let pairing_result = result.final_exponentiation();
+            assert_eq!(bool::from(pairing_result.is_identity()), !should_fail);
         }
     }
 
