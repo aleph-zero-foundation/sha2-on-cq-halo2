@@ -31,7 +31,7 @@ mod evaluation;
 mod keygen;
 mod lookup;
 pub(crate) mod permutation;
-mod static_lookup;
+pub(crate) mod static_lookup;
 mod vanishing;
 
 mod prover;
@@ -45,8 +45,11 @@ pub use prover::*;
 pub use verifier::*;
 
 use evaluation::Evaluator;
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io;
+
+use self::static_lookup::{StaticCommittedTable, StaticTable, StaticTableId, StaticTableValues};
 
 /// This is a verifying key which allows for the verification of proofs for a
 /// particular circuit.
@@ -66,6 +69,7 @@ where
     /// The representative of this `VerifyingKey` in transcripts.
     transcript_repr: E::Scalar,
     selectors: Vec<Vec<bool>>,
+    static_table_mapping: BTreeMap<StaticTableId<String>, StaticCommittedTable<E>>,
 }
 
 impl<E> VerifyingKey<E>
@@ -152,6 +156,8 @@ where
             permutation,
             cs,
             selectors,
+            // TODO: FIXME
+            BTreeMap::default(),
         ))
     }
 
@@ -193,6 +199,7 @@ where
         permutation: permutation::VerifyingKey<E::G1Affine>,
         cs: ConstraintSystem<E::Scalar>,
         selectors: Vec<Vec<bool>>,
+        static_table_mapping: BTreeMap<StaticTableId<String>, StaticCommittedTable<E>>,
     ) -> Self {
         // Compute cached values.
         let cs_degree = cs.degree();
@@ -206,6 +213,7 @@ where
             // Temporary, this is not pinned.
             transcript_repr: E::Scalar::zero(),
             selectors,
+            static_table_mapping,
         };
 
         let mut hasher = Blake2bParams::new()
@@ -292,6 +300,7 @@ where
     fixed_cosets: Vec<Polynomial<E::Scalar, ExtendedLagrangeCoeff>>,
     permutation: permutation::ProvingKey<E::G1Affine>,
     ev: Evaluator<E::G1Affine>,
+    static_table_mapping: BTreeMap<StaticTableId<String>, &'static StaticTableValues<E>>,
 }
 
 impl<E: MultiMillerLoop + Debug> ProvingKey<E>
@@ -368,6 +377,7 @@ where
         let fixed_polys = read_polynomial_vec(reader, format);
         let fixed_cosets = read_polynomial_vec(reader, format);
         let permutation = permutation::ProvingKey::read(reader, format);
+        // let static_tables = static_lookup::StaticTable::read(reader, format);
         let ev = Evaluator::new(vk.cs());
         Ok(Self {
             vk,
@@ -379,6 +389,8 @@ where
             fixed_cosets,
             permutation,
             ev,
+            // TODO: FIXME
+            static_table_mapping: BTreeMap::default(),
         })
     }
 

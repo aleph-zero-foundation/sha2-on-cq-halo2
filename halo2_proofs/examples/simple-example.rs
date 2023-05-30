@@ -243,6 +243,8 @@ struct MyCircuit<F: FieldExt> {
     constant: F,
     a: Value<F>,
     b: Value<F>,
+    t1: StaticTable,
+    t2: StaticTable,
 }
 
 impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
@@ -264,6 +266,12 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
         // Create a fixed column to load constants.
         let constant = meta.fixed_column();
 
+        // meta.create_gate(name, constraints);
+
+        // meta.lookup(name, table_map);
+
+        // meta.lookup_static("20-bit", (advice[0], "20-bit table"));
+
         FieldChip::configure(meta, advice, instance, constant)
     }
 
@@ -272,7 +280,33 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let field_chip = FieldChip::<F>::construct(config);
+        // layouter.register_static_table::<E>("20-bit table", [0..(1 << 20)])?;
+
+        /*
+
+           let t1 = StaticTWrapper {
+               Some(////)
+               Some(////)
+           }
+
+           // real life
+           let buff = read_v_part(file)
+           let t1 = StatitTWrapper {
+               None,
+               Some(buff.into)
+           }
+
+           // real life
+           let buff = read_p_part(file)
+           let t1 = StaticTWrapper {
+               Some(////)
+               None
+           }
+
+
+        */
+
+        let field_chip: FieldChip<F> = FieldChip::<F>::construct(config);
 
         // Load our private values into the circuit.
         let a = field_chip.load_private(layouter.namespace(|| "load a"), self.a)?;

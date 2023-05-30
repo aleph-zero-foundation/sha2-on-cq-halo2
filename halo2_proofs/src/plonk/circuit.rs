@@ -1,11 +1,13 @@
 use core::cmp::max;
 use core::ops::{Add, Mul};
 use ff::Field;
+use halo2curves::pairing::MultiMillerLoop;
 use std::{
     convert::TryFrom,
     ops::{Neg, Sub},
 };
 
+use super::static_lookup::{self, StaticTable, StaticTableId};
 use super::{lookup, permutation, Assigned, Error};
 use crate::{
     circuit::{Layouter, Region, Value},
@@ -521,6 +523,7 @@ impl Challenge {
 /// This trait allows a [`Circuit`] to direct some backend to assign a witness
 /// for a constraint system.
 pub trait Assignment<F: Field> {
+    type E: MultiMillerLoop<Scalar = F>;
     /// Creates a new region and enters into it.
     ///
     /// Panics if we are currently in a region (if `exit_region` was not called).
@@ -541,6 +544,13 @@ pub trait Assignment<F: Field> {
     ///
     /// [`Layouter::assign_region`]: crate::circuit::Layouter#method.assign_region
     fn exit_region(&mut self);
+
+    /// Register a static table
+    fn register_static_table(
+        &mut self,
+        id: StaticTableId<String>,
+        static_table: &'static StaticTable<Self::E>,
+    );
 
     /// Enables a selector at the given row.
     fn enable_selector<A, AR>(
@@ -1376,6 +1386,8 @@ pub struct ConstraintSystem<F: Field> {
     // input expressions and a sequence of table expressions involved in the lookup.
     pub(crate) lookups: Vec<lookup::Argument<F>>,
 
+    pub(crate) static_lookups: Vec<static_lookup::Argument<F>>,
+
     // Vector of fixed columns, which can be used to store constant values
     // that are copied into advice columns.
     pub(crate) constants: Vec<Column<Fixed>>,
@@ -1459,6 +1471,7 @@ impl<F: Field> Default for ConstraintSystem<F> {
             instance_queries: Vec::new(),
             permutation: permutation::Argument::new(),
             lookups: Vec::new(),
+            static_lookups: Vec::new(),
             constants: vec![],
             minimum_degree: None,
         }
@@ -1553,6 +1566,26 @@ impl<F: Field> ConstraintSystem<F> {
         let index = self.lookups.len();
 
         self.lookups.push(lookup::Argument::new(name, table_map));
+
+        index
+    }
+
+    /// cq lookup
+    pub fn lookup_static(
+        &mut self,
+        name: &'static str,
+        table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> (Expression<F>, StaticTableId<String>),
+    ) -> usize {
+        let mut cells = VirtualCells::new(self);
+        let (input, table_id) = table_map(&mut cells);
+        if input.contains_simple_selector() {
+            panic!("expression containing simple selector supplied to lookup argument");
+        }
+
+        let index = self.static_lookups.len();
+
+        self.static_lookups
+            .push(static_lookup::Argument::new(name, input, table_id));
 
         index
     }

@@ -23,6 +23,7 @@ use super::{
     lookup, permutation, vanishing, ChallengeBeta, ChallengeGamma, ChallengeTheta, ChallengeX,
     ChallengeY, Error, Expression, ProvingKey,
 };
+use crate::plonk::static_lookup::{StaticTable, StaticTableId};
 use crate::poly::batch_invert_assigned_ref;
 use crate::poly::commitment::ParamsProver;
 use crate::poly::kzg::commitment::KZGCommitmentScheme;
@@ -166,6 +167,7 @@ where
         R: RngCore,
         T: TranscriptWrite<E::G1Affine, EC>,
     {
+        type E = E;
         fn enter_region<NR, N>(&mut self, _: N)
         where
             NR: Into<String>,
@@ -176,6 +178,15 @@ where
 
         fn exit_region(&mut self) {
             // Do nothing; we don't care about regions in this context.
+        }
+
+        fn register_static_table(
+            &mut self,
+            id: StaticTableId<String>,
+            static_table: &'static StaticTable<Self::E>,
+        ) {
+            // if ctx = prover then check that prover part is some and take it else panic
+            // if ctx = verifier then check that verifier part is some and take it else panic
         }
 
         fn enable_selector<A, AR>(&mut self, _: A, _: &Selector, _: usize) -> Result<(), Error>
