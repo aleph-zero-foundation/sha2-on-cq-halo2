@@ -108,12 +108,9 @@ mod test {
 
         let params = ParamsKZG::<Bn256>::new(K);
 
-        let proof = create_proof::<
-            KZGCommitmentScheme<Bn256>,
-            ProverSHPLONK<_>,
-            _,
-            Blake2bWrite<_, _, Challenge255<_>>,
-        >(&params);
+        let proof = create_proof::<Bn256, ProverSHPLONK<_>, _, Blake2bWrite<_, _, Challenge255<_>>>(
+            &params,
+        );
 
         let verifier_params = params.verifier_params();
 
@@ -137,7 +134,7 @@ mod test {
     fn verify<
         'a,
         'params,
-        E: MultiMillerLoop,
+        E: MultiMillerLoop + Debug,
         V: Verifier<'params, E>,
         EC: EncodedChallenge<E::G1Affine>,
         T: TranscriptReadBuffer<&'a [u8], E::G1Affine, EC>,
@@ -147,7 +144,6 @@ mod test {
         proof: &'a [u8],
         should_fail: bool,
     ) where
-        E: Debug,
         E::G1Affine: SerdeObject,
         E::G2Affine: SerdeObject,
     {
@@ -212,32 +208,36 @@ mod test {
 
     fn create_proof<
         'params,
-        Scheme: CommitmentScheme,
-        P: Prover<'params, Scheme>,
-        E: EncodedChallenge<Scheme::Curve>,
-        T: TranscriptWriterBuffer<Vec<u8>, Scheme::Curve, E>,
+        E: MultiMillerLoop + Debug,
+        P: Prover<'params, E>,
+        EC: EncodedChallenge<E::G1Affine>,
+        T: TranscriptWriterBuffer<Vec<u8>, E::G1Affine, EC>,
     >(
-        params: &'params Scheme::ParamsProver,
-    ) -> Vec<u8> {
+        params: &'params <KZGCommitmentScheme<E> as CommitmentScheme>::ParamsProver,
+    ) -> Vec<u8>
+    where
+        E::G1Affine: SerdeObject,
+        E::G2Affine: SerdeObject,
+    {
         let domain = EvaluationDomain::new(1, params.k());
 
         let mut ax = domain.empty_coeff();
         for (i, a) in ax.iter_mut().enumerate() {
-            *a = <<Scheme as CommitmentScheme>::Curve as CurveAffine>::ScalarExt::from(
+            *a = <<KZGCommitmentScheme<E> as CommitmentScheme>::Curve as CurveAffine>::ScalarExt::from(
                 10 + i as u64,
             );
         }
 
         let mut bx = domain.empty_coeff();
         for (i, a) in bx.iter_mut().enumerate() {
-            *a = <<Scheme as CommitmentScheme>::Curve as CurveAffine>::ScalarExt::from(
+            *a = <<KZGCommitmentScheme<E> as CommitmentScheme>::Curve as CurveAffine>::ScalarExt::from(
                 100 + i as u64,
             );
         }
 
         let mut cx = domain.empty_coeff();
         for (i, a) in cx.iter_mut().enumerate() {
-            *a = <<Scheme as CommitmentScheme>::Curve as CurveAffine>::ScalarExt::from(
+            *a = <<KZGCommitmentScheme<E> as CommitmentScheme>::Curve as CurveAffine>::ScalarExt::from(
                 100 + i as u64,
             );
         }

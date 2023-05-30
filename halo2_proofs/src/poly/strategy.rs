@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use halo2curves::CurveAffine;
 use rand_core::RngCore;
 
@@ -20,9 +22,8 @@ pub trait Guard<Scheme: CommitmentScheme> {
 }
 
 /// Trait representing a strategy for verifying Halo 2 proofs.
-pub trait VerificationStrategy<'params, E: MultiMillerLoop, V: Verifier<'params, E>>
+pub trait VerificationStrategy<'params, E: MultiMillerLoop + Debug, V: Verifier<'params, E>>
 where
-    E: std::fmt::Debug,
     E::G1Affine: SerdeObject,
     E::G2Affine: SerdeObject,
 {

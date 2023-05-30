@@ -30,7 +30,7 @@ use crate::poly::commitment::ParamsVerifier;
 /// Returns a boolean indicating whether or not the proof is valid
 pub fn verify_proof<
     'params,
-    E: MultiMillerLoop,
+    E: MultiMillerLoop + Debug,
     V: Verifier<'params, E>,
     EC: EncodedChallenge<E::G1Affine>,
     T: TranscriptRead<E::G1Affine, EC>,
@@ -43,7 +43,6 @@ pub fn verify_proof<
     transcript: &mut T,
 ) -> Result<Strategy::Output, Error>
 where
-    E: Debug,
     E::G1Affine: SerdeObject,
     E::G2Affine: SerdeObject,
 {

@@ -1,9 +1,12 @@
 use ff::Field;
 use group::Curve;
+use halo2curves::pairing::MultiMillerLoop;
+use halo2curves::serde::SerdeObject;
 use halo2curves::CurveExt;
 use rand_core::RngCore;
 use std::collections::BTreeSet;
 use std::env::var;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::RangeTo;
 use std::rc::Rc;
@@ -22,6 +25,7 @@ use super::{
 };
 use crate::poly::batch_invert_assigned_ref;
 use crate::poly::commitment::ParamsProver;
+use crate::poly::kzg::commitment::KZGCommitmentScheme;
 use crate::transcript::Transcript;
 use crate::{
     arithmetic::{eval_polynomial, CurveAffine, FieldExt},
@@ -46,20 +50,24 @@ use group::prime::PrimeCurveAffine;
 pub fn create_proof<
     'params,
     'a,
-    Scheme: CommitmentScheme,
-    P: Prover<'params, Scheme>,
-    E: EncodedChallenge<Scheme::Curve>,
+    E: MultiMillerLoop + Debug,
+    P: Prover<'params, E>,
+    EC: EncodedChallenge<E::G1Affine>,
     R: RngCore + 'a,
-    T: TranscriptWrite<Scheme::Curve, E>,
-    ConcreteCircuit: Circuit<Scheme::Scalar>,
+    T: TranscriptWrite<E::G1Affine, EC>,
+    ConcreteCircuit: Circuit<E::Scalar>,
 >(
-    params: &'params Scheme::ParamsProver,
-    pk: &ProvingKey<Scheme::Curve>,
+    params: &'params <KZGCommitmentScheme<E> as CommitmentScheme>::ParamsProver,
+    pk: &ProvingKey<E::G1Affine>,
     circuits: &[ConcreteCircuit],
-    instances: &[&[&'a [Scheme::Scalar]]],
+    instances: &[&[&'a [E::Scalar]]],
     mut rng: R,
     mut transcript: &'a mut T,
-) -> Result<(), Error> {
+) -> Result<(), Error>
+where
+    E::G1Affine: SerdeObject,
+    E::G2Affine: SerdeObject,
+{
     for instance in instances.iter() {
         if instance.len() != pk.vk.cs.num_instance_columns {
             return Err(Error::InvalidInstances);
@@ -82,9 +90,9 @@ pub fn create_proof<
         pub instance_polys: Vec<Polynomial<C::Scalar, Coeff>>,
     }
 
-    let instance: Vec<InstanceSingle<Scheme::Curve>> = instances
+    let instance: Vec<InstanceSingle<E::G1Affine>> = instances
         .iter()
-        .map(|instance| -> Result<InstanceSingle<Scheme::Curve>, Error> {
+        .map(|instance| -> Result<InstanceSingle<E::G1Affine>, Error> {
             let instance_values = instance
                 .iter()
                 .map(|values| {
@@ -121,41 +129,42 @@ pub fn create_proof<
         pub advice_blinds: Vec<Blind<C::Scalar>>,
     }
 
-    struct WitnessCollection<'params, 'a, 'b, Scheme, P, C, E, R, T>
+    struct WitnessCollection<'params, 'a, 'b, E, P, EC, R, T>
     where
-        Scheme: CommitmentScheme<Curve = C>,
-        P: Prover<'params, Scheme>,
-        C: CurveAffine,
-        E: EncodedChallenge<C>,
+        E: MultiMillerLoop + Debug,
+        E::G1Affine: SerdeObject,
+        E::G2Affine: SerdeObject,
+        P: Prover<'params, E>,
+        EC: EncodedChallenge<E::G1Affine>,
         R: RngCore + 'a,
-        T: TranscriptWrite<C, E>,
+        T: TranscriptWrite<E::G1Affine, EC>,
     {
-        params: &'params Scheme::ParamsProver,
+        params: &'params <KZGCommitmentScheme<E> as CommitmentScheme>::ParamsProver,
         current_phase: sealed::Phase,
-        advice: Vec<Polynomial<Assigned<C::Scalar>, LagrangeCoeff>>,
-        challenges: &'b mut HashMap<usize, C::Scalar>,
-        instances: &'b [&'a [C::Scalar]],
+        advice: Vec<Polynomial<Assigned<E::Scalar>, LagrangeCoeff>>,
+        challenges: &'b mut HashMap<usize, E::Scalar>,
+        instances: &'b [&'a [E::Scalar]],
         usable_rows: RangeTo<usize>,
-        advice_single: AdviceSingle<C, LagrangeCoeff>,
-        instance_single: &'b InstanceSingle<C>,
+        advice_single: AdviceSingle<E::G1Affine, LagrangeCoeff>,
+        instance_single: &'b InstanceSingle<E::G1Affine>,
         rng: &'b mut R,
         transcript: &'b mut &'a mut T,
         column_indices: [Vec<usize>; 3],
         challenge_indices: [Vec<usize>; 3],
         unusable_rows_start: usize,
-        _marker: PhantomData<(P, E)>,
+        _marker: PhantomData<(P, EC)>,
     }
 
-    impl<'params, 'a, 'b, F, Scheme, P, C, E, R, T> Assignment<F>
-        for WitnessCollection<'params, 'a, 'b, Scheme, P, C, E, R, T>
+    impl<'params, 'a, 'b, E, P, EC, R, T> Assignment<E::Scalar>
+        for WitnessCollection<'params, 'a, 'b, E, P, EC, R, T>
     where
-        F: FieldExt,
-        Scheme: CommitmentScheme<Curve = C>,
-        P: Prover<'params, Scheme>,
-        C: CurveAffine<ScalarExt = F>,
-        E: EncodedChallenge<C>,
+        E: MultiMillerLoop + Debug,
+        E::G1Affine: SerdeObject,
+        E::G2Affine: SerdeObject,
+        P: Prover<'params, E>,
+        EC: EncodedChallenge<E::G1Affine>,
         R: RngCore,
-        T: TranscriptWrite<C, E>,
+        T: TranscriptWrite<E::G1Affine, EC>,
     {
         fn enter_region<NR, N>(&mut self, _: N)
         where
@@ -179,7 +188,11 @@ pub fn create_proof<
             Ok(())
         }
 
-        fn query_instance(&self, column: Column<Instance>, row: usize) -> Result<Value<F>, Error> {
+        fn query_instance(
+            &self,
+            column: Column<Instance>,
+            row: usize,
+        ) -> Result<Value<E::Scalar>, Error> {
             if !self.usable_rows.contains(&row) {
                 return Err(Error::not_enough_rows_available(self.params.k()));
             }
@@ -197,8 +210,8 @@ pub fn create_proof<
             //_: A,
             column: Column<Advice>,
             row: usize,
-            to: Value<Assigned<F>>,
-        ) -> Result<Value<&'v Assigned<F>>, Error> {
+            to: Value<Assigned<E::Scalar>>,
+        ) -> Result<Value<&'v Assigned<E::Scalar>>, Error> {
             // TODO: better to assign all at once, deal with phases later
             // Ignore assignment of advice column in different phase than current one.
             if self.current_phase != column.column_type().phase {
@@ -226,11 +239,11 @@ pub fn create_proof<
             *advice_get_mut = to
                 .assign()
                 .expect("No Value::unknown() in advice column allowed during create_proof");
-            let immutable_raw_ptr = advice_get_mut as *const Assigned<F>;
+            let immutable_raw_ptr = advice_get_mut as *const Assigned<E::Scalar>;
             Ok(Value::known(unsafe { &*immutable_raw_ptr }))
         }
 
-        fn assign_fixed(&mut self, _: Column<Fixed>, _: usize, _: Assigned<F>) {
+        fn assign_fixed(&mut self, _: Column<Fixed>, _: usize, _: Assigned<E::Scalar>) {
             // We only care about advice columns here
         }
 
@@ -242,12 +255,12 @@ pub fn create_proof<
             &mut self,
             _: Column<Fixed>,
             _: usize,
-            _: Value<Assigned<F>>,
+            _: Value<Assigned<E::Scalar>>,
         ) -> Result<(), Error> {
             Ok(())
         }
 
-        fn get_challenge(&self, challenge: Challenge) -> Value<F> {
+        fn get_challenge(&self, challenge: Challenge) -> Value<E::Scalar> {
             self.challenges
                 .get(&challenge.index())
                 .cloned()
@@ -289,8 +302,8 @@ pub fn create_proof<
                         .map(|poly| self.params.commit_lagrange(poly, Blind::default()))
                         .collect();
                     let mut instance_commitments =
-                        vec![C::identity(); instance_commitments_projective.len()];
-                    C::CurveExt::batch_normalize(
+                        vec![E::G1Affine::identity(); instance_commitments_projective.len()];
+                    <E::G1Affine as CurveAffine>::CurveExt::batch_normalize(
                         &instance_commitments_projective,
                         &mut instance_commitments,
                     );
@@ -305,7 +318,7 @@ pub fn create_proof<
                 }
             }
             // Commit the advice columns in the current phase
-            let mut advice_values = batch_invert_assigned_ref::<F>(
+            let mut advice_values = batch_invert_assigned_ref::<E::Scalar>(
                 self.column_indices
                     .get(phase)
                     .expect("The API only supports 3 phases right now")
@@ -316,21 +329,25 @@ pub fn create_proof<
             // Add blinding factors to advice columns
             for advice_values in &mut advice_values {
                 for cell in &mut advice_values[self.unusable_rows_start..] {
-                    *cell = F::random(&mut self.rng);
+                    *cell = E::Scalar::random(&mut self.rng);
                 }
             }
             // Compute commitments to advice column polynomials
             let blinds: Vec<_> = advice_values
                 .iter()
-                .map(|_| Blind(F::random(&mut self.rng)))
+                .map(|_| Blind(E::Scalar::random(&mut self.rng)))
                 .collect();
             let advice_commitments_projective: Vec<_> = advice_values
                 .iter()
                 .zip(blinds.iter())
                 .map(|(poly, blind)| self.params.commit_lagrange(poly, *blind))
                 .collect();
-            let mut advice_commitments = vec![C::identity(); advice_commitments_projective.len()];
-            C::CurveExt::batch_normalize(&advice_commitments_projective, &mut advice_commitments);
+            let mut advice_commitments =
+                vec![E::G1Affine::identity(); advice_commitments_projective.len()];
+            <E::G1Affine as CurveAffine>::CurveExt::batch_normalize(
+                &advice_commitments_projective,
+                &mut advice_commitments,
+            );
             let advice_commitments = advice_commitments;
             drop(advice_commitments_projective);
 
@@ -369,7 +386,7 @@ pub fn create_proof<
 
     let (advice, challenges) = {
         let mut advice = Vec::with_capacity(instances.len());
-        let mut challenges = HashMap::<usize, Scheme::Scalar>::with_capacity(meta.num_challenges);
+        let mut challenges = HashMap::<usize, E::Scalar>::with_capacity(meta.num_challenges);
 
         let unusable_rows_start = params.n() as usize - (meta.blinding_factors() + 1);
         let phases = pk.vk.cs.phases().collect::<Vec<_>>();
@@ -385,7 +402,7 @@ pub fn create_proof<
         for ((circuit, instances), instance_single) in
             circuits.iter().zip(instances).zip(instance.iter())
         {
-            let mut witness: WitnessCollection<Scheme, P, _, E, _, _> = WitnessCollection {
+            let mut witness: WitnessCollection<E, P, EC, _, _> = WitnessCollection {
                 params,
                 current_phase: phases[0],
                 advice: vec![domain.empty_lagrange_assigned(); meta.num_advice_columns],
@@ -396,7 +413,7 @@ pub fn create_proof<
                 // number of blinding factors and an extra row for use in the
                 // permutation argument.
                 usable_rows: ..unusable_rows_start,
-                advice_single: AdviceSingle::<Scheme::Curve, LagrangeCoeff> {
+                advice_single: AdviceSingle::<E::G1Affine, LagrangeCoeff> {
                     advice_polys: vec![domain.empty_lagrange(); meta.num_advice_columns],
                     advice_blinds: vec![Blind::default(); meta.num_advice_columns],
                 },
@@ -438,7 +455,7 @@ pub fn create_proof<
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: ChallengeTheta<_> = transcript.squeeze_challenge_scalar();
 
-    let lookups: Vec<Vec<lookup::prover::Permuted<Scheme::Curve>>> = instance
+    let lookups: Vec<Vec<lookup::prover::Permuted<E::G1Affine>>> = instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
@@ -472,7 +489,7 @@ pub fn create_proof<
     let gamma: ChallengeGamma<_> = transcript.squeeze_challenge_scalar();
 
     // Commit to permutations.
-    let permutations: Vec<permutation::prover::Committed<Scheme::Curve>> = instance
+    let permutations: Vec<permutation::prover::Committed<E::G1Affine>> = instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| {
@@ -491,7 +508,7 @@ pub fn create_proof<
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups: Vec<Vec<lookup::prover::Committed<Scheme::Curve>>> = lookups
+    let lookups: Vec<Vec<lookup::prover::Committed<E::G1Affine>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             // Construct and commit to products for each lookup
@@ -509,7 +526,7 @@ pub fn create_proof<
     let y: ChallengeY<_> = transcript.squeeze_challenge_scalar();
 
     // Calculate the advice polys
-    let advice: Vec<AdviceSingle<Scheme::Curve, Coeff>> = advice
+    let advice: Vec<AdviceSingle<E::G1Affine, Coeff>> = advice
         .into_iter()
         .map(
             |AdviceSingle {
@@ -615,13 +632,13 @@ pub fn create_proof<
     pk.permutation.evaluate(x, transcript)?;
 
     // Evaluate the permutations, if any, at omega^i x.
-    let permutations: Vec<permutation::prover::Evaluated<Scheme::Curve>> = permutations
+    let permutations: Vec<permutation::prover::Evaluated<E::G1Affine>> = permutations
         .into_iter()
         .map(|permutation| -> Result<_, _> { permutation.construct().evaluate(pk, x, transcript) })
         .collect::<Result<Vec<_>, _>>()?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<lookup::prover::Evaluated<Scheme::Curve>>> = lookups
+    let lookups: Vec<Vec<lookup::prover::Evaluated<E::G1Affine>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups

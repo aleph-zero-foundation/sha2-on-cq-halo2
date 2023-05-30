@@ -128,18 +128,22 @@ pub trait MSM<C: CurveAffine>: Clone + Debug + Send + Sync {
 }
 
 /// Common multi-open prover interface for various commitment schemes
-pub trait Prover<'params, Scheme: CommitmentScheme> {
+pub trait Prover<'params, E: MultiMillerLoop + Debug>
+where
+    E::G1Affine: SerdeObject,
+    E::G2Affine: SerdeObject,
+{
     /// Query instance or not
     const QUERY_INSTANCE: bool;
 
     /// Creates new prover instance
-    fn new(params: &'params Scheme::ParamsProver) -> Self;
+    fn new(params: &'params <KZGCommitmentScheme<E> as CommitmentScheme>::ParamsProver) -> Self;
 
     /// Create a multi-opening proof
     fn create_proof<
         'com,
-        E: EncodedChallenge<Scheme::Curve>,
-        T: TranscriptWrite<Scheme::Curve, E>,
+        EC: EncodedChallenge<E::G1Affine>,
+        T: TranscriptWrite<E::G1Affine, EC>,
         R,
         I,
     >(
@@ -149,14 +153,13 @@ pub trait Prover<'params, Scheme: CommitmentScheme> {
         queries: I,
     ) -> io::Result<()>
     where
-        I: IntoIterator<Item = ProverQuery<'com, Scheme::Curve>> + Clone,
+        I: IntoIterator<Item = ProverQuery<'com, E::G1Affine>> + Clone,
         R: RngCore;
 }
 
 /// Common multi-open verifier interface for various commitment schemes
-pub trait Verifier<'params, E: MultiMillerLoop>
+pub trait Verifier<'params, E: MultiMillerLoop + Debug>
 where
-    E: Debug,
     E::G1Affine: SerdeObject,
     E::G2Affine: SerdeObject,
 {
