@@ -16,8 +16,11 @@ use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
+use halo2curves::pairing::MultiMillerLoop;
+use halo2curves::serde::SerdeObject;
 use std::any::TypeId;
 use std::convert::TryInto;
+use std::fmt::Debug;
 use std::num::ParseIntError;
 use std::slice;
 use std::{
@@ -277,9 +280,9 @@ impl<C: CurveAffine> Evaluator<C> {
     }
 
     /// Evaluate h poly
-    pub(in crate::plonk) fn evaluate_h(
+    pub(in crate::plonk) fn evaluate_h<E>(
         &self,
-        pk: &ProvingKey<C>,
+        pk: &ProvingKey<E>,
         advice_polys: &[&[Polynomial<C::ScalarExt, Coeff>]],
         instance_polys: &[&[Polynomial<C::ScalarExt, Coeff>]],
         challenges: &[C::ScalarExt],
@@ -289,7 +292,12 @@ impl<C: CurveAffine> Evaluator<C> {
         theta: C::ScalarExt,
         lookups: &[Vec<lookup::prover::Committed<C>>],
         permutations: &[permutation::prover::Committed<C>],
-    ) -> Polynomial<C::ScalarExt, ExtendedLagrangeCoeff> {
+    ) -> Polynomial<C::ScalarExt, ExtendedLagrangeCoeff>
+    where
+        E: MultiMillerLoop<G1Affine = C, Scalar = C::ScalarExt> + Debug,
+        E::G1Affine: SerdeObject,
+        E::G2Affine: SerdeObject,
+    {
         let domain = &pk.vk.domain;
         let size = domain.extended_len();
         let rot_scale = 1 << (domain.extended_k() - domain.k());

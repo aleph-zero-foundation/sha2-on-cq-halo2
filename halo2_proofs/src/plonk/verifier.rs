@@ -37,7 +37,7 @@ pub fn verify_proof<
     Strategy: VerificationStrategy<'params, E, V>,
 >(
     params: &'params <KZGCommitmentScheme<E> as CommitmentScheme>::ParamsVerifier,
-    vk: &VerifyingKey<E::G1Affine>,
+    vk: &VerifyingKey<E>,
     strategy: Strategy,
     instances: &[&[&[E::Scalar]]],
     transcript: &mut T,

@@ -58,7 +58,7 @@ pub fn create_proof<
     ConcreteCircuit: Circuit<E::Scalar>,
 >(
     params: &'params <KZGCommitmentScheme<E> as CommitmentScheme>::ParamsProver,
-    pk: &ProvingKey<E::G1Affine>,
+    pk: &ProvingKey<E>,
     circuits: &[ConcreteCircuit],
     instances: &[&[&'a [E::Scalar]]],
     mut rng: R,
