@@ -31,6 +31,7 @@ mod evaluation;
 mod keygen;
 mod lookup;
 pub(crate) mod permutation;
+mod static_lookup;
 mod vanishing;
 
 mod prover;
