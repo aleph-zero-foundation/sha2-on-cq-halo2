@@ -48,8 +48,8 @@ where
     type ParamsProver = ParamsKZG<E>;
     type ParamsVerifier = ParamsVerifierKZG<E>;
 
-    fn new_params(k: u32) -> Self::ParamsProver {
-        ParamsKZG::new(k)
+    fn new_params<R: RngCore>(k: u32, rng: &mut R) -> Self::ParamsProver {
+        ParamsKZG::new(k, rng)
     }
 
     fn read_params<R: io::Read>(reader: &mut R) -> io::Result<Self::ParamsProver> {
@@ -317,8 +317,8 @@ where
         self
     }
 
-    fn new(k: u32) -> Self {
-        Self::setup(k, OsRng)
+    fn new<R: RngCore>(k: u32, rng: &mut R) -> Self {
+        Self::setup(k, rng)
     }
 
     fn commit(&self, poly: &Polynomial<E::Scalar, Coeff>, _: Blind<E::Scalar>) -> E::G1 {
@@ -361,7 +361,7 @@ mod test {
         use crate::poly::EvaluationDomain;
         use halo2curves::bn256::{Bn256, Fr};
 
-        let params = ParamsKZG::<Bn256>::new(K);
+        let params = ParamsKZG::<Bn256>::new(K, &mut OsRng);
         let domain = EvaluationDomain::new(1, K);
 
         let mut a = domain.empty_lagrange();
@@ -389,7 +389,7 @@ mod test {
         use crate::halo2curves::bn256::{Bn256, Fr};
         use crate::poly::EvaluationDomain;
 
-        let params0 = ParamsKZG::<Bn256>::new(K);
+        let params0 = ParamsKZG::<Bn256>::new(K, &mut OsRng);
         let mut data = vec![];
         <ParamsKZG<_> as Params<_>>::write(&params0, &mut data).unwrap();
         let params1: ParamsKZG<Bn256> = Params::read::<_>(&mut &data[..]).unwrap();

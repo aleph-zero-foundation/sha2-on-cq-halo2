@@ -1,7 +1,7 @@
 use core::cmp::max;
 use core::ops::{Add, Mul};
 use ff::Field;
-use halo2curves::pairing::MultiMillerLoop;
+use halo2curves::pairing::{Engine, MultiMillerLoop};
 use std::{
     convert::TryFrom,
     ops::{Neg, Sub},
@@ -549,7 +549,7 @@ pub trait Assignment<F: Field> {
     fn register_static_table(
         &mut self,
         id: StaticTableId<String>,
-        static_table: &'static StaticTable<Self::E>,
+        static_table: StaticTable<Self::E>,
     );
 
     /// Enables a selector at the given row.
@@ -635,6 +635,7 @@ pub trait Assignment<F: Field> {
 /// The floor planner is chip-agnostic and applies its strategy to the circuit it is used
 /// within.
 pub trait FloorPlanner {
+    type E: MultiMillerLoop;
     /// Given the provided `cs`, synthesize the given circuit.
     ///
     /// `constants` is the list of fixed columns that the layouter may use to assign
@@ -645,7 +646,7 @@ pub trait FloorPlanner {
     /// - Perform any necessary setup or measurement tasks, which may involve one or more
     ///   calls to `Circuit::default().synthesize(config, &mut layouter)`.
     /// - Call `circuit.synthesize(config, &mut layouter)` exactly once.
-    fn synthesize<F: Field, CS: Assignment<F>, C: Circuit<F>>(
+    fn synthesize<CS: Assignment<<Self::E as Engine>::Scalar, E = Self::E>, C: Circuit<Self::E>>(
         cs: &mut CS,
         circuit: &C,
         config: C::Config,
@@ -656,12 +657,12 @@ pub trait FloorPlanner {
 /// This is a trait that circuits provide implementations for so that the
 /// backend prover can ask the circuit to synthesize using some given
 /// [`ConstraintSystem`] implementation.
-pub trait Circuit<F: Field> {
+pub trait Circuit<E: MultiMillerLoop> {
     /// This is a configuration object that stores things like columns.
     type Config: Clone;
     /// The floor planner used for this circuit. This is an associated type of the
     /// `Circuit` trait because its behaviour is circuit-critical.
-    type FloorPlanner: FloorPlanner;
+    type FloorPlanner: FloorPlanner<E = E>;
 
     /// Returns a copy of this circuit with no witness values (i.e. all witnesses set to
     /// `None`). For most circuits, this will be equal to `Self::default()`.
@@ -669,12 +670,16 @@ pub trait Circuit<F: Field> {
 
     /// The circuit is given an opportunity to describe the exact gate
     /// arrangement, column arrangement, etc.
-    fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config;
+    fn configure(meta: &mut ConstraintSystem<E::Scalar>) -> Self::Config;
 
     /// Given the provided `cs`, synthesize the circuit. The concrete type of
     /// the caller will be different depending on the context, and they may or
     /// may not expect to have a witness present.
-    fn synthesize(&self, config: Self::Config, layouter: impl Layouter<F>) -> Result<(), Error>;
+    fn synthesize(
+        &self,
+        config: Self::Config,
+        layouter: impl Layouter<E::Scalar>,
+    ) -> Result<(), Error>;
 }
 
 /// Low-degree expression representing an identity that must hold over the committed columns.

@@ -31,7 +31,7 @@ mod evaluation;
 mod keygen;
 mod lookup;
 pub(crate) mod permutation;
-pub(crate) mod static_lookup;
+pub mod static_lookup;
 mod vanishing;
 
 mod prover;
@@ -118,14 +118,14 @@ where
     /// Checks that field elements are less than modulus, and then checks that the point is on the curve.
     /// - `RawBytesUnchecked`: Reads an uncompressed curve element with coordinates in Montgomery form;
     /// does not perform any checks
-    pub fn read<R: io::Read, ConcreteCircuit: Circuit<E::Scalar>>(
+    pub fn read<R: io::Read, ConcreteCircuit: Circuit<E>>(
         reader: &mut R,
         format: SerdeFormat,
     ) -> io::Result<Self> {
         let mut k = [0u8; 4];
         reader.read_exact(&mut k)?;
         let k = u32::from_be_bytes(k);
-        let (domain, cs, _) = keygen::create_domain::<E::G1Affine, ConcreteCircuit>(k);
+        let (domain, cs, _) = keygen::create_domain::<E, ConcreteCircuit>(k);
         let mut num_fixed_columns = [0u8; 4];
         reader.read_exact(&mut num_fixed_columns).unwrap();
         let num_fixed_columns = u32::from_be_bytes(num_fixed_columns);
@@ -169,7 +169,7 @@ where
     }
 
     /// Reads a verification key from a slice of bytes using [`Self::read`].
-    pub fn from_bytes<ConcreteCircuit: Circuit<E::Scalar>>(
+    pub fn from_bytes<ConcreteCircuit: Circuit<E>>(
         mut bytes: &[u8],
         format: SerdeFormat,
     ) -> io::Result<Self> {
@@ -300,7 +300,7 @@ where
     fixed_cosets: Vec<Polynomial<E::Scalar, ExtendedLagrangeCoeff>>,
     permutation: permutation::ProvingKey<E::G1Affine>,
     ev: Evaluator<E::G1Affine>,
-    static_table_mapping: BTreeMap<StaticTableId<String>, &'static StaticTableValues<E>>,
+    static_table_mapping: BTreeMap<StaticTableId<String>, StaticTableValues<E>>,
 }
 
 impl<E: MultiMillerLoop + Debug> ProvingKey<E>
@@ -365,7 +365,7 @@ where
     /// Checks that field elements are less than modulus, and then checks that the point is on the curve.
     /// - `RawBytesUnchecked`: Reads an uncompressed curve element with coordinates in Montgomery form;
     /// does not perform any checks
-    pub fn read<R: io::Read, ConcreteCircuit: Circuit<E::Scalar>>(
+    pub fn read<R: io::Read, ConcreteCircuit: Circuit<E>>(
         reader: &mut R,
         format: SerdeFormat,
     ) -> io::Result<Self> {
@@ -402,7 +402,7 @@ where
     }
 
     /// Reads a proving key from a slice of bytes using [`Self::read`].
-    pub fn from_bytes<ConcreteCircuit: Circuit<E::Scalar>>(
+    pub fn from_bytes<ConcreteCircuit: Circuit<E>>(
         mut bytes: &[u8],
         format: SerdeFormat,
     ) -> io::Result<Self> {

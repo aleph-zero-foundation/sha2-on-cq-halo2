@@ -12,13 +12,13 @@ use super::Expression;
 
 #[derive(Debug, Clone)]
 pub struct StaticTable<E: MultiMillerLoop> {
-    pub(crate) opened: Option<&'static StaticTableValues<E>>,
-    pub(crate) committed: Option<StaticCommittedTable<E>>,
+    pub opened: Option<StaticTableValues<E>>,
+    pub committed: Option<StaticCommittedTable<E>>,
 }
 
 /// Abstract type that allows to store MAP(table_id => static_table) in proving(verifying) key
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct StaticTableId<T: Clone + Ord>(T);
+pub struct StaticTableId<T: Clone + Ord>(pub T);
 
 impl<T: Clone + Ord> StaticTableId<T> {
     pub fn id(&self) -> &T {
@@ -28,20 +28,21 @@ impl<T: Clone + Ord> StaticTableId<T> {
 
 #[derive(Copy, Clone, Debug)]
 pub struct StaticTableValues<E: MultiMillerLoop> {
-    x: E::Scalar,
+    /// FIXME make constructor
+    pub x: E::Scalar,
 }
 
 impl<E: MultiMillerLoop> StaticTableValues<E> {
-    pub fn commit(&self, srs_g2: &[E::G2Affine]) -> StaticCommittedTable<E> {
+    pub fn commit(&self, srs_g2: E::G2Affine) -> StaticCommittedTable<E> {
         StaticCommittedTable {
-            x: (srs_g2[1] * self.x).into(),
+            x: (srs_g2 * self.x).into(),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct StaticCommittedTable<E: MultiMillerLoop> {
-    x: E::G2Affine,
+    pub x: E::G2Affine,
 }
 
 #[derive(Debug, Clone)]

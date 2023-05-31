@@ -6,6 +6,7 @@ use std::fmt::Debug;
 
 use crate::plonk::Error;
 
+#[derive(Debug)]
 pub struct Committed<E: MultiMillerLoop> {
     lhs: E::G1Affine,
 }

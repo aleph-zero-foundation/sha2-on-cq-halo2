@@ -28,16 +28,16 @@ use crate::{
     },
 };
 
-pub(crate) fn create_domain<C, ConcreteCircuit>(
+pub(crate) fn create_domain<E, ConcreteCircuit>(
     k: u32,
 ) -> (
-    EvaluationDomain<C::Scalar>,
-    ConstraintSystem<C::Scalar>,
+    EvaluationDomain<E::Scalar>,
+    ConstraintSystem<E::Scalar>,
     ConcreteCircuit::Config,
 )
 where
-    C: CurveAffine,
-    ConcreteCircuit: Circuit<C::Scalar>,
+    E: MultiMillerLoop,
+    ConcreteCircuit: Circuit<E>,
 {
     let mut cs = ConstraintSystem::default();
     let config = ConcreteCircuit::configure(&mut cs);
@@ -64,7 +64,7 @@ struct Assembly<F: Field, E: MultiMillerLoop<Scalar = F>> {
     selectors: Vec<Vec<bool>>,
     // A range of available rows for assignment and copies.
     usable_rows: Range<usize>,
-    static_table_mapping: BTreeMap<StaticTableId<String>, &'static StaticTable<E>>,
+    static_table_mapping: BTreeMap<StaticTableId<String>, StaticTable<E>>,
     ctx: SynthCtx,
     _marker: std::marker::PhantomData<F>,
 }
@@ -84,11 +84,7 @@ impl<F: Field, E: MultiMillerLoop<Scalar = F>> Assignment<F> for Assembly<F, E> 
         // Do nothing; we don't care about regions in this context.
     }
 
-    fn register_static_table(
-        &mut self,
-        id: StaticTableId<String>,
-        static_table: &'static StaticTable<E>,
-    ) {
+    fn register_static_table(&mut self, id: StaticTableId<String>, static_table: StaticTable<E>) {
         // if ctx = prover then check that prover part is some and take it else panic
         // if ctx = verifier then check that verifier part is some and take it else panic
         match self.ctx {
@@ -218,9 +214,9 @@ where
     E::G1Affine: SerdeObject,
     E::G2Affine: SerdeObject,
     P: Params<'params, E::G1Affine>,
-    ConcreteCircuit: Circuit<E::Scalar>,
+    ConcreteCircuit: Circuit<E>,
 {
-    let (domain, cs, config) = create_domain::<E::G1Affine, ConcreteCircuit>(params.k());
+    let (domain, cs, config) = create_domain::<E, ConcreteCircuit>(params.k());
 
     if (params.n() as usize) < cs.minimum_rows() {
         return Err(Error::not_enough_rows_available(params.k()));
@@ -289,7 +285,7 @@ where
     E::G1Affine: SerdeObject,
     E::G2Affine: SerdeObject,
     P: Params<'params, E::G1Affine>,
-    ConcreteCircuit: Circuit<E::Scalar>,
+    ConcreteCircuit: Circuit<E>,
 {
     let mut cs = ConstraintSystem::default();
     let config = ConcreteCircuit::configure(&mut cs);
@@ -376,12 +372,11 @@ where
 
     // Compute the optimized evaluation data structure
     let ev = Evaluator::new(&vk.cs);
-    let static_table_mapping: BTreeMap<StaticTableId<String>, &'static StaticTableValues<E>> =
-        assembly
-            .static_table_mapping
-            .iter()
-            .map(|(k, v)| (k.clone(), v.opened.unwrap())) //safe to unwrap since this is checked in register_static_table method
-            .collect();
+    let static_table_mapping: BTreeMap<StaticTableId<String>, StaticTableValues<E>> = assembly
+        .static_table_mapping
+        .iter()
+        .map(|(k, v)| (k.clone(), v.opened.clone().unwrap())) //safe to unwrap since this is checked in register_static_table method
+        .collect();
 
     Ok(ProvingKey {
         vk,

@@ -345,7 +345,7 @@ impl<F: Field + Group, E: MultiMillerLoop<Scalar = F>> Assignment<F> for MockPro
     fn register_static_table(
         &mut self,
         id: StaticTableId<String>,
-        static_table: &'static StaticTable<Self::E>,
+        static_table: StaticTable<Self::E>,
     ) {
         // if ctx = prover then check that prover part is some and take it else panic
         // if ctx = verifier then check that verifier part is some and take it else panic
@@ -500,7 +500,7 @@ impl<F: Field + Group, E: MultiMillerLoop<Scalar = F>> Assignment<F> for MockPro
 impl<F: FieldExt, E: MultiMillerLoop<Scalar = F> + std::marker::Sync> MockProver<F, E> {
     /// Runs a synthetic keygen-and-prove operation on the given circuit, collecting data
     /// about the constraints and their assignments.
-    pub fn run<ConcreteCircuit: Circuit<F>>(
+    pub fn run<ConcreteCircuit: Circuit<E>>(
         k: u32,
         circuit: &ConcreteCircuit,
         instance: Vec<Vec<F>>,
@@ -1395,7 +1395,8 @@ impl<F: FieldExt, E: MultiMillerLoop<Scalar = F> + std::marker::Sync> MockProver
 
 #[cfg(test)]
 mod tests {
-    use halo2curves::pasta::Fp;
+    // use halo2curves::pasta::Fp;
+    use halo2curves::bn256::{Bn256, Fr as Fp};
 
     use super::{FailureLocation, MockProver, VerifyFailure};
     use crate::{
@@ -1419,9 +1420,9 @@ mod tests {
 
         struct FaultyCircuit {}
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Bn256> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
-            type FloorPlanner = SimpleFloorPlanner;
+            type FloorPlanner = SimpleFloorPlanner<Bn256>;
 
             fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
                 let a = meta.advice_column();
@@ -1497,9 +1498,9 @@ mod tests {
 
         struct FaultyCircuit {}
 
-        impl Circuit<Fp> for FaultyCircuit {
+        impl Circuit<Bn256> for FaultyCircuit {
             type Config = FaultyCircuitConfig;
-            type FloorPlanner = SimpleFloorPlanner;
+            type FloorPlanner = SimpleFloorPlanner<Bn256>;
 
             fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
                 let a = meta.advice_column();
