@@ -678,7 +678,7 @@ pub trait Circuit<E: MultiMillerLoop> {
     fn synthesize(
         &self,
         config: Self::Config,
-        layouter: impl Layouter<E::Scalar>,
+        layouter: impl Layouter<E::Scalar, E = E>,
     ) -> Result<(), Error>;
 }
 
