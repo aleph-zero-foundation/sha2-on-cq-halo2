@@ -1,5 +1,6 @@
 use ff::Field;
 use group::Curve;
+use halo2curves::batch_pairing::PairingBatcher;
 use rand_core::RngCore;
 use std::fmt::Debug;
 use std::iter;
@@ -34,14 +35,14 @@ pub fn verify_proof<
     V: Verifier<'params, E>,
     EC: EncodedChallenge<E::G1Affine>,
     T: TranscriptRead<E::G1Affine, EC>,
-    Strategy: VerificationStrategy<'params, E, V>,
+    Strategy: VerificationStrategy<'params, E, V, Output = Strategy>,
 >(
     params: &'params <KZGCommitmentScheme<E> as CommitmentScheme>::ParamsVerifier,
     vk: &VerifyingKey<E>,
     strategy: Strategy,
     instances: &[&[&[E::Scalar]]],
     transcript: &mut T,
-) -> Result<Strategy::Output, Error>
+) -> Result<PairingBatcher<E>, Error>
 where
     E::G1Affine: SerdeObject,
     E::G2Affine: SerdeObject,
@@ -137,6 +138,17 @@ where
                 .lookups
                 .iter()
                 .map(|argument| argument.read_permuted_commitments(transcript))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let static_lookups = (0..num_proofs)
+        .map(|_| -> Result<Vec<_>, _> {
+            // Hash each lookup permuted commitment
+            vk.cs
+                .static_lookups
+                .iter()
+                .map(|lookup| lookup.read_commitments(transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -399,9 +411,28 @@ where
     // polynomial commitments open to the correct values.
 
     let verifier = V::new(params);
-    strategy.process(|msm| {
+    let strategy = strategy.process(|msm| {
         verifier
             .verify_proof(transcript, queries, msm)
             .map_err(|_| Error::Opening)
-    })
+    })?;
+
+    // squeeze a challenge
+    let pairing_batcher_challenge = transcript.squeeze_challenge();
+    let mut pairing_batcher: PairingBatcher<E> =
+        PairingBatcher::<E>::new(pairing_batcher_challenge.get_scalar());
+
+    // now register all static lookups pairings
+    let _ = static_lookups
+        .into_iter()
+        .map(|static_lookups| -> Result<Vec<_>, _> {
+            // Hash each lookup permuted commitment
+            static_lookups
+                .iter()
+                .map(|lookup| lookup.register_pairing(&vk, &mut pairing_batcher))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    strategy.merge_with_pairing_batcher(&mut pairing_batcher);
+    Ok(pairing_batcher)
 }

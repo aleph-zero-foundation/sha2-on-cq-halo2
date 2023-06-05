@@ -13,6 +13,8 @@ pub struct PairingBatcher<E: MultiMillerLoop> {
     challenge: E::Scalar,
     /// running challenge
     running_challenge: E::Scalar,
+    /// is finalized
+    finalized: bool,
 }
 
 impl<E: MultiMillerLoop> PairingBatcher<E> {
@@ -22,6 +24,7 @@ impl<E: MultiMillerLoop> PairingBatcher<E> {
             g2_to_g1: HashMap::default(),
             challenge,
             running_challenge: E::Scalar::from(1),
+            finalized: false,
         }
     }
 
@@ -74,7 +77,11 @@ impl<E: MultiMillerLoop> PairingBatcher<E> {
     }
 
     /// Returns output ready for MultiMillerLoop
-    pub fn finalize(&self) -> Vec<(E::G1Affine, E::G2Prepared)> {
+    pub fn finalize(mut self) -> Vec<(E::G1Affine, E::G2Prepared)> {
+        if self.finalized {
+            panic!("Batcher is already consumed!");
+        }
+        self.finalized = true;
         let g2_map = self.g2_to_g2.clone();
         self.g2_to_g1
             .iter()

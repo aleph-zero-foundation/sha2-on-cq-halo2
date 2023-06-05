@@ -197,10 +197,11 @@ fn my_test_e2e() {
             &params,
             &pk,
             &[circuit],
-            &[&[&[]]],
+            &[],
             OsRng,
             &mut transcript,
-        );
+        )
+        .unwrap();
 
         transcript.finalize()
     };
@@ -210,17 +211,23 @@ fn my_test_e2e() {
     let verifier_params = params.verifier_params();
     let strategy = VerificationStrategy::<Bn256, VerifierGWC<_>>::new(verifier_params);
 
-    verify_proof::<
+    let p_batcher = verify_proof::<
         Bn256,
         VerifierGWC<_>,
         _,
         Blake2bRead<_, _, Challenge255<_>>,
         AccumulatorStrategy<_>,
-    >(
-        verifier_params,
-        pk.get_vk(),
-        strategy,
-        &[&[&[]]],
-        &mut transcript,
+    >(verifier_params, pk.get_vk(), strategy, &[], &mut transcript)
+    .unwrap();
+
+    let batched_tuples = p_batcher.finalize();
+    let result = Bn256::multi_miller_loop(
+        &batched_tuples
+            .iter()
+            .map(|(g1, g2)| (g1, g2))
+            .collect::<Vec<_>>(),
     );
+
+    let pairing_result = result.final_exponentiation();
+    assert!(bool::from(pairing_result.is_identity()));
 }

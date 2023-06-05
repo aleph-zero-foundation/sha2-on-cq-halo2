@@ -21,7 +21,7 @@ pub struct Committed<E: MultiMillerLoop> {
 impl<F: Field> super::Argument<F> {
     pub fn commit<E, EC, T>(
         &self,
-        pk: ProvingKey<E>,
+        pk: &ProvingKey<E>,
         transcript: &mut T,
     ) -> Result<Committed<E>, Error>
     where

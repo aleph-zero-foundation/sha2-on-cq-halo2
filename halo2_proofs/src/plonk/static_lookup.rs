@@ -1,8 +1,8 @@
 use ff::Field;
 use halo2curves::pairing::MultiMillerLoop;
 
-mod prover;
-mod verifier;
+pub(crate) mod prover;
+pub(crate) mod verifier;
 
 use std::{collections::BTreeMap, io};
 

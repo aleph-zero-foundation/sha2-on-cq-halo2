@@ -23,7 +23,7 @@ use super::{
     lookup, permutation, vanishing, ChallengeBeta, ChallengeGamma, ChallengeTheta, ChallengeX,
     ChallengeY, Error, Expression, ProvingKey,
 };
-use crate::plonk::static_lookup::{StaticTable, StaticTableId};
+use crate::plonk::static_lookup::{self, StaticTable, StaticTableId};
 use crate::poly::batch_invert_assigned_ref;
 use crate::poly::commitment::ParamsProver;
 use crate::poly::kzg::commitment::KZGCommitmentScheme;
@@ -71,6 +71,11 @@ where
 {
     for instance in instances.iter() {
         if instance.len() != pk.vk.cs.num_instance_columns {
+            println!("instance.len(): {}", instance.len());
+            println!(
+                "pk.vk.cs.num_instance_columns: {}",
+                pk.vk.cs.num_instance_columns
+            );
             return Err(Error::InvalidInstances);
         }
     }
@@ -490,6 +495,19 @@ where
                     )
                 })
                 .collect()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // STATIC LOOKUPS!
+    let _static_lookups = (0..instance.len())
+        .map(|_| -> Result<Vec<_>, _> {
+            // Hash each lookup permuted commitment
+            pk.vk
+                .cs
+                .static_lookups
+                .iter()
+                .map(|lookup| lookup.commit(pk, transcript))
+                .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
 
