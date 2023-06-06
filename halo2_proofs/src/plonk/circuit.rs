@@ -1583,14 +1583,14 @@ impl<F: Field> ConstraintSystem<F> {
     ) -> usize {
         let mut cells = VirtualCells::new(self);
         let (input, table_id) = table_map(&mut cells);
-        if input.contains_simple_selector() {
-            panic!("expression containing simple selector supplied to lookup argument");
-        }
+        // if input.contains_simple_selector() {
+        //     panic!("expression containing simple selector supplied to lookup argument");
+        // }
 
         let index = self.static_lookups.len();
 
-        self.static_lookups
-            .push(static_lookup::Argument::new(name, input, table_id));
+        // self.static_lookups
+        //     .push(static_lookup::Argument::new(name, input, table_id));
 
         index
     }
@@ -1980,6 +1980,17 @@ impl<F: Field> ConstraintSystem<F> {
         degree = std::cmp::max(
             degree,
             self.lookups
+                .iter()
+                .map(|l| l.required_degree())
+                .max()
+                .unwrap_or(1),
+        );
+
+        // The lookup argument also serves alongside the gates and must be accounted
+        // for.
+        degree = std::cmp::max(
+            degree,
+            self.static_lookups
                 .iter()
                 .map(|l| l.required_degree())
                 .max()

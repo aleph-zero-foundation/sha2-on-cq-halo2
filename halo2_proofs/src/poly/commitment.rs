@@ -258,13 +258,3 @@ impl<F: FieldExt> MulAssign<F> for Blind<F> {
         self.0 *= rhs;
     }
 }
-
-use halo2curves::pairing::{Engine, PairingCurveAffine};
-
-pub trait PairingFriendlyCS: CommitmentScheme {
-    // type Curve = CommitmentScheme<Curve = E::G1Affine>;
-    // fn batch_pairings(
-    //     &self,
-    //     &mut batcher: PairingBatcher
-    // );
-}

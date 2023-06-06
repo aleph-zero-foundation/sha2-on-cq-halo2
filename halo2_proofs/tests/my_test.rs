@@ -1,10 +1,10 @@
 use group::{Curve, Group};
 use rand::{Rng, SeedableRng};
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use ff::{Field, PrimeField};
 use halo2_proofs::{
-    circuit::SimpleFloorPlanner,
+    circuit::{SimpleFloorPlanner, Value},
     plonk::{
         create_proof, keygen_pk, keygen_vk,
         static_lookup::{StaticCommittedTable, StaticTable, StaticTableId, StaticTableValues},
@@ -47,6 +47,10 @@ impl<E: MultiMillerLoop<Scalar = F>, F: Field> Circuit<E> for MyCircuit<E> {
 
     fn configure(meta: &mut halo2_proofs::plonk::ConstraintSystem<F>) -> Self::Config {
         let advice = meta.advice_column();
+        meta.create_gate("", |meta| vec![meta.query_advice(advice, Rotation::cur())]);
+
+        let selector = meta.selector();
+        meta.create_gate("", |meta| vec![meta.query_selector(selector)]);
         meta.lookup_static("lookup_bits", |meta| {
             (
                 meta.query_advice(advice, Rotation::cur()),
@@ -66,6 +70,10 @@ impl<E: MultiMillerLoop<Scalar = F>, F: Field> Circuit<E> for MyCircuit<E> {
             StaticTableId(String::from("bits_table")),
             self.table.clone(),
         );
+        // layouter.assign_region(
+        //     || "",
+        //     |mut region| { region.assign_advice(config, 0, Value::known(F::one())) },
+        // )?;
 
         Ok(())
     }
@@ -77,116 +85,51 @@ static SEED: [u8; 32] = [
     0,
 ];
 
-// helper test for constructing a table: TODO: make this into a bin file
-#[test]
-fn static_table() {
+fn generate_table(params: &ParamsKZG<Bn256>, k: usize) -> StaticTable<Bn256> {
     use halo2curves::bn256::Fr;
-    const K: u32 = 6;
 
-    let mut rng = rand_chacha::ChaCha8Rng::from_seed(SEED);
-    let params = ParamsKZG::<Bn256>::new(K, &mut rng);
+    let table_values = [
+        Fr::from(1),
+        Fr::from(4),
+        Fr::from(6),
+        Fr::from(8),
+        Fr::from(10),
+        Fr::from(12),
+        Fr::from(14),
+        Fr::from(16),
+        Fr::from(18),
+        Fr::from(20),
+        Fr::from(22),
+        Fr::from(24),
+        Fr::from(26),
+        Fr::from(28),
+        Fr::from(30),
+        Fr::from(32),
+    ];
 
-    let opened_ = StaticTableValues::<Bn256> { x: Fr::from(5) };
-    let committed = opened_.commit(params.g2());
-
-    let x_inv = Fr::from(5).invert().unwrap();
-    let lhs = <Bn256 as Engine>::G1Affine::generator() * x_inv;
-    let lhs = lhs.to_affine();
-
-    assert_eq!(
-        Bn256::pairing(&lhs, &committed.x),
-        Bn256::pairing(
-            &<Bn256 as Engine>::G1Affine::generator(),
-            &<Bn256 as Engine>::G2Affine::generator()
-        )
-    );
-    println!("opened: {:?}", opened_);
-    println!(
-        "committed x: {:?}",
-        committed.x.coordinates().unwrap().x().to_bytes()
-    );
-    println!(
-        "committed y: {:?}",
-        committed.x.coordinates().unwrap().y().to_bytes()
-    );
-}
-
-use halo2curves::bn256::{Fq2, Fr, G2Affine};
-// #[macro_use]
-// extern crate lazy_static;
-// lazy_static! {
-//     static ref OPENED: StaticTableValues<Bn256> = StaticTableValues { x: Fr::from(5) };
-//     static ref TABLE: StaticTable<Bn256> = StaticTable {
-//         opened: Some(&OPENED),
-//         committed: Some(StaticCommittedTable {
-//             x: <Bn256 as Engine>::G2Affine::from_xy(
-//                 Fq2::from_bytes(&[
-//                     216, 16, 100, 160, 144, 131, 112, 19, 145, 154, 138, 174, 248, 93, 219, 245,
-//                     234, 72, 57, 96, 60, 119, 229, 244, 19, 45, 48, 59, 66, 156, 83, 46, 161, 178,
-//                     40, 228, 16, 229, 113, 6, 213, 89, 55, 175, 197, 122, 181, 87, 36, 22, 225,
-//                     222, 8, 18, 28, 157, 217, 95, 181, 97, 245, 204, 9, 10
-//                 ])
-//                 .unwrap(),
-//                 Fq2::from_bytes(&[
-//                     246, 107, 111, 251, 148, 211, 70, 157, 212, 90, 83, 207, 76, 4, 35, 235, 229,
-//                     182, 183, 60, 6, 236, 47, 122, 199, 39, 55, 184, 154, 159, 141, 47, 99, 199,
-//                     252, 28, 1, 20, 20, 210, 87, 64, 33, 228, 254, 87, 214, 193, 27, 28, 201, 120,
-//                     13, 189, 238, 228, 54, 167, 36, 57, 81, 99, 183, 25
-//                 ])
-//                 .unwrap()
-//             )
-//             .unwrap()
-//         })
-//     };
-// }
-
-fn generate_table<E: MultiMillerLoop>(x: E::Scalar) -> StaticTable<E> {
-    use group::prime::PrimeCurveAffine;
-    // let mut rng = rand_chacha::ChaCha8Rng::from_seed(SEED);
-    // let params = ParamsKZG::<Bn256>::new(K, &mut rng);
-
-    let opened = StaticTableValues::<E> { x };
-    let committed = opened.commit(<E as Engine>::G2Affine::generator());
+    let table = StaticTableValues::new(&table_values, &params.get_g());
+    let n = 1 << k;
+    let committed = table.commit(params.g1_srs().len(), params.g2_srs(), n);
 
     StaticTable {
-        opened: Some(opened),
+        opened: Some(table),
         committed: Some(committed),
     }
-
-    // let x_inv = Fr::from(5).invert().unwrap();
-    // let lhs = <Bn256 as Engine>::G1Affine::generator() * x_inv;
-    // let lhs = lhs.to_affine();
-    // todo!()
 }
-
-// #[test]
-// fn table_sanity() {
-//     let x_inv = Fr::from(5).invert().unwrap();
-//     let lhs = <Bn256 as Engine>::G1Affine::generator() * x_inv;
-//     let lhs = lhs.to_affine();
-
-//     assert_eq!(
-//         Bn256::pairing(&lhs, &TABLE.clone().committed.unwrap().x),
-//         Bn256::pairing(
-//             &<Bn256 as Engine>::G1Affine::generator(),
-//             &<Bn256 as Engine>::G2Affine::generator()
-//         )
-//     );
-// }
 
 #[test]
 fn my_test_e2e() {
-    const K: u32 = 6;
+    const K: u32 = 2;
     let mut rng = rand_chacha::ChaCha8Rng::from_seed(SEED);
 
-    let table = generate_table(<Bn256 as Engine>::Scalar::from(5));
+    let table_size = 16u32;
 
-    let params = ParamsKZG::<Bn256>::new(K, &mut rng);
+    let params = ParamsKZG::<Bn256>::setup(table_size - 1, table_size, &mut rng);
+    let table = generate_table(&params, K as usize);
     let circuit = MyCircuit { table };
 
-    // Initialize the proving key
+    // Initialize keys
     let vk = keygen_vk(&params, &circuit).expect("keygen_vk should not fail");
-
     let pk = keygen_pk(&params, vk, &circuit).expect("keygen_pk should not fail");
 
     // Create proof
@@ -197,7 +140,7 @@ fn my_test_e2e() {
             &params,
             &pk,
             &[circuit],
-            &[],
+            &[&[]],
             OsRng,
             &mut transcript,
         )
@@ -217,7 +160,13 @@ fn my_test_e2e() {
         _,
         Blake2bRead<_, _, Challenge255<_>>,
         AccumulatorStrategy<_>,
-    >(verifier_params, pk.get_vk(), strategy, &[], &mut transcript)
+    >(
+        verifier_params,
+        pk.get_vk(),
+        strategy,
+        &[&[]],
+        &mut transcript,
+    )
     .unwrap();
 
     let batched_tuples = p_batcher.finalize();

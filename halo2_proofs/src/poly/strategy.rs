@@ -4,7 +4,7 @@ use halo2curves::CurveAffine;
 use rand_core::RngCore;
 
 use super::{
-    commitment::{CommitmentScheme, PairingFriendlyCS, Verifier, MSM},
+    commitment::{CommitmentScheme, Verifier, MSM},
     kzg::commitment::KZGCommitmentScheme,
 };
 use crate::{

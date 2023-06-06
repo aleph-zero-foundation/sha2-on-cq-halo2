@@ -92,7 +92,7 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
                 let quotient = kate_division(&table_coeffs, g_i);
                 let quotient = quotient.iter().map(|&v| v * g_i_scaled).collect::<Vec<_>>();
 
-                best_multiexp(&quotient, srs_g1)
+                best_multiexp(&quotient, &srs_g1[..quotient.len()])
             })
             .collect();
 
@@ -103,7 +103,12 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
         }
     }
 
-    pub fn commit(&self, srs_g2: &[E::G2Affine], circuit_domain: usize) -> StaticCommittedTable<E> {
+    pub fn commit(
+        &self,
+        srs_g1_len: usize,
+        srs_g2: &[E::G2Affine],
+        circuit_domain: usize,
+    ) -> StaticCommittedTable<E> {
         let domain = EvaluationDomain::<E::Scalar>::new(2, log2(self.size));
         // zv = x^n - 1
         assert!(is_pow_2(self.size));
@@ -119,7 +124,7 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
         let t = best_multiexp(&table_coeffs, &srs_g2[..table_coeffs.len()]);
         // NOTE: B0 bound is computed generically based on srs size instead of just table size SRS
         // this allows using longer srs or just having multiple tables with different lengths
-        let b0_bound_index = srs_g2.len() - 1 - (circuit_domain - 2);
+        let b0_bound_index = srs_g1_len - 1 - (circuit_domain - 2);
         StaticCommittedTable {
             zv: zv.into(),
             t: t.into(),
@@ -145,6 +150,10 @@ impl<F: Field> Argument<F> {
     pub fn new(name: &'static str, input: Expression<F>, table_id: StaticTableId<String>) -> Self {
         Self { input, table_id }
     }
+
+    pub(crate) fn required_degree(&self) -> usize {
+        std::cmp::max(2, self.input.degree())
+    }
 }
 
 #[test]
@@ -159,5 +168,5 @@ fn test_table() {
         qs: vec![],
     };
 
-    let _ = table.commit(&params.g2_srs, 4);
+    let _ = table.commit(params.g.len(), &params.g2_srs, 4);
 }

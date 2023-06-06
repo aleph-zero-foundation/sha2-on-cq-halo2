@@ -2,9 +2,7 @@ use crate::arithmetic::{
     best_fft, best_multiexp, g_to_lagrange, parallelize, CurveAffine, CurveExt, FieldExt, Group,
 };
 use crate::helpers::SerdeCurveAffine;
-use crate::poly::commitment::{
-    Blind, CommitmentScheme, PairingFriendlyCS, Params, ParamsProver, ParamsVerifier, MSM,
-};
+use crate::poly::commitment::{Blind, CommitmentScheme, Params, ParamsProver, ParamsVerifier, MSM};
 use crate::poly::{Coeff, LagrangeCoeff, Polynomial};
 use crate::SerdeFormat;
 
@@ -64,13 +62,6 @@ where
     fn read_params<R: io::Read>(reader: &mut R) -> io::Result<Self::ParamsProver> {
         ParamsKZG::read(reader)
     }
-}
-
-impl<E: Engine + Debug> PairingFriendlyCS for KZGCommitmentScheme<E>
-where
-    E::G1Affine: SerdeCurveAffine,
-    E::G2Affine: SerdeCurveAffine,
-{
 }
 
 impl<E: Engine + Debug> ParamsKZG<E> {
@@ -190,6 +181,16 @@ impl<E: Engine + Debug> ParamsKZG<E> {
     /// Returns first power of secret on G2
     pub fn s_g2(&self) -> E::G2Affine {
         self.s_g2
+    }
+
+    /// Returns g2 generators
+    pub fn g2_srs(&self) -> &[E::G2Affine] {
+        &self.g2_srs
+    }
+
+    /// Returns g1 generators
+    pub fn g1_srs(&self) -> &[E::G1Affine] {
+        &self.g
     }
 
     /// Writes parameters to buffer
@@ -364,7 +365,7 @@ where
     }
 
     fn new<R: RngCore>(k: u32, rng: &mut R) -> Self {
-        Self::setup(k, 0, rng)
+        Self::setup(k, k, rng)
     }
 
     fn commit(&self, poly: &Polynomial<E::Scalar, Coeff>, _: Blind<E::Scalar>) -> E::G1 {

@@ -183,7 +183,7 @@ impl<E: MultiMillerLoop> Committed<E> {
         );
 
         // (b - b(0)) / X
-        let b0_poly_coeffs = bs[1..].to_vec();
+        let mut b0_poly_coeffs = bs[1..].to_vec();
 
         // TODO: QB part will be handled with full quotient argument and multiopen
 
@@ -195,6 +195,9 @@ impl<E: MultiMillerLoop> Committed<E> {
         // convert to correct poly types
         let b_poly = domain.coeff_from_vec(bs);
         let p_poly = domain.coeff_from_vec(p_poly_coeffs);
+
+        // TODO append 0 here to fix issue
+        b0_poly_coeffs.push(E::Scalar::zero());
         let b0_poly = domain.coeff_from_vec(b0_poly_coeffs);
 
         // write all commitements to transcript

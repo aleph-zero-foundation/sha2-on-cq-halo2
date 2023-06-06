@@ -6,8 +6,8 @@ use std::fmt::Debug;
 use std::iter;
 
 use super::{
-    vanishing, ChallengeBeta, ChallengeGamma, ChallengeTheta, ChallengeX, ChallengeY, Error,
-    VerifyingKey,
+    static_lookup, vanishing, ChallengeBeta, ChallengeGamma, ChallengeTheta, ChallengeX,
+    ChallengeY, Error, VerifyingKey,
 };
 use crate::arithmetic::{compute_inner_product, CurveAffine, FieldExt};
 use crate::poly::commitment::{CommitmentScheme, Verifier};
@@ -17,7 +17,9 @@ use crate::poly::{
     commitment::{Blind, Params, MSM},
     Guard, VerifierQuery,
 };
-use crate::transcript::{read_n_points, read_n_scalars, EncodedChallenge, TranscriptRead};
+use crate::transcript::{
+    read_n_points, read_n_scalars, ChallengeScalar, EncodedChallenge, TranscriptRead,
+};
 use halo2curves::pairing::MultiMillerLoop;
 use halo2curves::serde::SerdeObject;
 
@@ -144,12 +146,12 @@ where
 
     let static_lookups = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> {
-            // Hash each lookup permuted commitment
+            // Hash each static lookup commitment
             vk.cs
                 .static_lookups
                 .iter()
                 .map(|lookup| lookup.read_committed(transcript))
-                .collect::<Result<Vec<_>, _>>()
+                .collect::<Result<Vec<static_lookup::verifier::CommittedWitness<E>>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -180,7 +182,6 @@ where
     let static_lookups = static_lookups
         .into_iter()
         .map(|lookups| {
-            // Hash each lookup product commitment
             lookups
                 .into_iter()
                 .map(|lookup| lookup.read_committed_log_derivative(transcript))
@@ -244,6 +245,7 @@ where
             })
             .collect::<Vec<_>>()
     };
+    println!("x: {:?}", x);
 
     let advice_evals = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> { read_n_scalars(transcript, vk.cs.advice_queries.len()) })
@@ -373,7 +375,7 @@ where
         .zip(lookups_evaluated.iter())
         .zip(static_lookups.iter())
         .flat_map(
-            |(
+            |((
                 (
                     (
                         (
@@ -385,7 +387,7 @@ where
                     lookups,
                 ),
                 static_lookups,
-            )| {
+            ))| {
                 iter::empty()
                     .chain(
                         V::QUERY_INSTANCE
@@ -403,11 +405,15 @@ where
                     )
                     .chain(vk.cs.advice_queries.iter().enumerate().map(
                         move |(query_index, &(column, at))| {
-                            VerifierQuery::new_commitment(
+                            let vq = VerifierQuery::new_commitment(
                                 &advice_commitments[column.index()],
                                 vk.domain.rotate_omega(*x, at),
                                 advice_evals[query_index],
-                            )
+                            );
+
+                            println!("vq: {:?}", vq);
+
+                            vq
                         },
                     ))
                     .chain(permutation.queries(vk, x))
@@ -452,9 +458,11 @@ where
     })?;
 
     // squeeze a challenge
-    let pairing_batcher_challenge = transcript.squeeze_challenge();
+    let pairing_batcher_challenge: ChallengeScalar<_, ()> = transcript.squeeze_challenge_scalar();
     let mut pairing_batcher: PairingBatcher<E> =
-        PairingBatcher::<E>::new(pairing_batcher_challenge.get_scalar());
+        PairingBatcher::<E>::new(*pairing_batcher_challenge);
+
+    strategy.merge_with_pairing_batcher(&mut pairing_batcher);
 
     // now register all static lookups pairings
     let _ = static_lookups
@@ -467,6 +475,5 @@ where
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
-    strategy.merge_with_pairing_batcher(&mut pairing_batcher);
     Ok(pairing_batcher)
 }
