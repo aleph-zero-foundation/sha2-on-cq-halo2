@@ -1,5 +1,9 @@
 use ff::Field;
-use halo2curves::pairing::{Engine, MultiMillerLoop};
+use group::prime::PrimeCurveAffine;
+use halo2curves::{
+    pairing::{Engine, MultiMillerLoop},
+    FieldExt,
+};
 use rand_core::OsRng;
 
 pub(crate) mod prover;
@@ -8,7 +12,7 @@ pub(crate) mod verifier;
 use std::{collections::BTreeMap, io};
 
 use crate::{
-    arithmetic::best_multiexp,
+    arithmetic::{best_multiexp, kate_division},
     helpers::SerdePrimeField,
     poly::{kzg::commitment::ParamsKZG, EvaluationDomain},
     SerdeFormat,
@@ -45,10 +49,61 @@ pub struct StaticTableValues<E: MultiMillerLoop> {
     size: usize,
     /// Mapping from value to its index in the table
     value_index_mapping: BTreeMap<E::Scalar, usize>,
+    // lagrange commitments will exist in params
+    // quotient commitments
+    qs: Vec<E::G1>,
 }
 
 impl<E: MultiMillerLoop> StaticTableValues<E> {
-    pub fn commit(&self, srs_g2: &[E::G2Affine]) -> StaticCommittedTable<E> {
+    pub fn new(values: &[E::Scalar], srs_g1: &[E::G1Affine]) -> Self {
+        let size = values.len();
+        assert!(is_pow_2(size));
+
+        let value_index_mapping: BTreeMap<E::Scalar, usize> =
+            values.iter().enumerate().map(|(i, &f)| (f, i)).collect();
+        let keys_len = value_index_mapping.keys().len();
+        assert_eq!(size, keys_len); // check that table is all unique values
+
+        // compute all qs
+        let domain = EvaluationDomain::<E::Scalar>::new(2, log2(size));
+        let n = E::Scalar::from(size as u64);
+        let n_inv = n.invert().unwrap();
+
+        let w = domain.get_omega();
+
+        let roots_of_unity_scaled: Vec<E::Scalar> =
+            std::iter::successors(Some(E::Scalar::one()), |p| Some(*p * w * n_inv))
+                .take(size)
+                .collect();
+
+        let mut table_coeffs: Vec<E::Scalar> = values.to_vec();
+        EvaluationDomain::<E::Scalar>::ifft(
+            table_coeffs.as_mut_slice(),
+            domain.get_omega_inv(),
+            log2(size),
+            domain.ifft_divisor(),
+        );
+
+        // TODO: THIS SHOULD BE DONE WITH FK METHOD
+        let qs: Vec<E::G1> = roots_of_unity_scaled
+            .iter()
+            .map(|&g_i_scaled| {
+                let g_i = g_i_scaled * n;
+                let quotient = kate_division(&table_coeffs, g_i);
+                let quotient = quotient.iter().map(|&v| v * g_i_scaled).collect::<Vec<_>>();
+
+                best_multiexp(&quotient, srs_g1)
+            })
+            .collect();
+
+        Self {
+            size,
+            value_index_mapping,
+            qs,
+        }
+    }
+
+    pub fn commit(&self, srs_g2: &[E::G2Affine], circuit_domain: usize) -> StaticCommittedTable<E> {
         let domain = EvaluationDomain::<E::Scalar>::new(2, log2(self.size));
         // zv = x^n - 1
         assert!(is_pow_2(self.size));
@@ -62,9 +117,13 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
             domain.ifft_divisor(),
         );
         let t = best_multiexp(&table_coeffs, &srs_g2[..table_coeffs.len()]);
+        // NOTE: B0 bound is computed generically based on srs size instead of just table size SRS
+        // this allows using longer srs or just having multiple tables with different lengths
+        let b0_bound_index = srs_g2.len() - 1 - (circuit_domain - 2);
         StaticCommittedTable {
             zv: zv.into(),
             t: t.into(),
+            x_b0_bound: srs_g2[b0_bound_index],
         }
     }
 }
@@ -73,6 +132,7 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
 pub struct StaticCommittedTable<E: MultiMillerLoop> {
     pub zv: E::G2Affine,
     pub t: E::G2Affine,
+    pub x_b0_bound: E::G2Affine,
 }
 
 #[derive(Debug, Clone)]
@@ -96,7 +156,8 @@ fn test_table() {
     let table = StaticTableValues::<Bn256> {
         size: 8,
         value_index_mapping: (0..N).map(|i| (Fr::random(OsRng), i as usize)).collect(),
+        qs: vec![],
     };
 
-    let _ = table.commit(&params.g2_srs);
+    let _ = table.commit(&params.g2_srs, 4);
 }

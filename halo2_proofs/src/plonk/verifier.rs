@@ -148,7 +148,7 @@ where
             vk.cs
                 .static_lookups
                 .iter()
-                .map(|lookup| lookup.read_commitments(transcript))
+                .map(|lookup| lookup.read_committed(transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -173,6 +173,17 @@ where
             lookups
                 .into_iter()
                 .map(|lookup| lookup.read_product_commitment(transcript))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let static_lookups = static_lookups
+        .into_iter()
+        .map(|lookups| {
+            // Hash each lookup product commitment
+            lookups
+                .into_iter()
+                .map(|lookup| lookup.read_committed_log_derivative(transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -250,6 +261,16 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     let lookups_evaluated = lookups_committed
+        .into_iter()
+        .map(|lookups| -> Result<Vec<_>, _> {
+            lookups
+                .into_iter()
+                .map(|lookup| lookup.evaluate(transcript))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let static_lookups = static_lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups
@@ -350,13 +371,20 @@ where
         .zip(advice_evals.iter())
         .zip(permutations_evaluated.iter())
         .zip(lookups_evaluated.iter())
+        .zip(static_lookups.iter())
         .flat_map(
             |(
                 (
-                    (((instance_commitments, instance_evals), advice_commitments), advice_evals),
-                    permutation,
+                    (
+                        (
+                            ((instance_commitments, instance_evals), advice_commitments),
+                            advice_evals,
+                        ),
+                        permutation,
+                    ),
+                    lookups,
                 ),
-                lookups,
+                static_lookups,
             )| {
                 iter::empty()
                     .chain(
@@ -385,6 +413,12 @@ where
                     .chain(permutation.queries(vk, x))
                     .chain(
                         lookups
+                            .iter()
+                            .flat_map(move |p| p.queries(vk, x))
+                            .into_iter(),
+                    )
+                    .chain(
+                        static_lookups
                             .iter()
                             .flat_map(move |p| p.queries(vk, x))
                             .into_iter(),
@@ -429,7 +463,7 @@ where
             // Hash each lookup permuted commitment
             static_lookups
                 .iter()
-                .map(|lookup| lookup.register_pairing(&vk, &mut pairing_batcher))
+                .map(|lookup| lookup.register_pairings(&vk, params, &mut pairing_batcher, beta))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;

@@ -498,16 +498,30 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // STATIC LOOKUPS!
-    let _static_lookups = (0..instance.len())
-        .map(|_| -> Result<Vec<_>, _> {
-            // Hash each lookup permuted commitment
+    // STATIC_LOOKUPS!
+    let static_lookups: Vec<Vec<static_lookup::prover::Committed<E>>> = instance
+        .iter()
+        .zip(advice.iter())
+        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
+            // Construct and commit to permuted values for each lookup
             pk.vk
                 .cs
                 .static_lookups
                 .iter()
-                .map(|lookup| lookup.commit(pk, transcript))
-                .collect::<Result<Vec<_>, _>>()
+                .map(|lookup| {
+                    lookup.commit(
+                        pk,
+                        params,
+                        domain,
+                        theta,
+                        &challenges,
+                        &advice.advice_polys,
+                        &pk.fixed_values,
+                        &instance.instance_values,
+                        transcript,
+                    )
+                })
+                .collect()
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -544,6 +558,20 @@ where
             lookups
                 .into_iter()
                 .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // STATIC_LOOKUPS!
+    let static_lookups: Vec<Vec<static_lookup::prover::CommittedLogDerivative<E>>> = static_lookups
+        .into_iter()
+        .map(|static_lookups| -> Result<Vec<_>, _> {
+            // Construct and commit to products for each lookup
+            static_lookups
+                .into_iter()
+                .map(|static_lookup| {
+                    static_lookup.commit_log_derivatives(pk, params, domain, beta, transcript)
+                })
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -677,53 +705,70 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let instances = instance
-        .iter()
-        .zip(advice.iter())
-        .zip(permutations.iter())
-        .zip(lookups.iter())
-        .flat_map(|(((instance, advice), permutation), lookups)| {
-            iter::empty()
-                .chain(
-                    P::QUERY_INSTANCE
-                        .then_some(pk.vk.cs.instance_queries.iter().map(move |&(column, at)| {
+    // STATIC_LOOKUPS!
+    let static_lookups: Vec<Vec<static_lookup::prover::Evaluated<E>>> = static_lookups
+        .into_iter()
+        .map(|static_lookups| -> Result<Vec<_>, _> {
+            static_lookups
+                .into_iter()
+                .map(|lookup| lookup.evaluate(pk, x, transcript))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let instances =
+        instance
+            .iter()
+            .zip(advice.iter())
+            .zip(permutations.iter())
+            .zip(lookups.iter())
+            .zip(static_lookups.iter())
+            .flat_map(
+                |((((instance, advice), permutation), lookups), static_lookups)| {
+                    iter::empty()
+                        .chain(
+                            P::QUERY_INSTANCE
+                                .then_some(pk.vk.cs.instance_queries.iter().map(
+                                    move |&(column, at)| ProverQuery {
+                                        point: domain.rotate_omega(*x, at),
+                                        poly: &instance.instance_polys[column.index()],
+                                        blind: Blind::default(),
+                                    },
+                                ))
+                                .into_iter()
+                                .flatten(),
+                        )
+                        .chain(pk.vk.cs.advice_queries.iter().map(move |&(column, at)| {
                             ProverQuery {
                                 point: domain.rotate_omega(*x, at),
-                                poly: &instance.instance_polys[column.index()],
-                                blind: Blind::default(),
+                                poly: &advice.advice_polys[column.index()],
+                                blind: advice.advice_blinds[column.index()],
                             }
                         }))
-                        .into_iter()
-                        .flatten(),
-                )
-                .chain(
-                    pk.vk
-                        .cs
-                        .advice_queries
-                        .iter()
-                        .map(move |&(column, at)| ProverQuery {
-                            point: domain.rotate_omega(*x, at),
-                            poly: &advice.advice_polys[column.index()],
-                            blind: advice.advice_blinds[column.index()],
-                        }),
-                )
-                .chain(permutation.open(pk, x))
-                .chain(lookups.iter().flat_map(move |p| p.open(pk, x)).into_iter())
-        })
-        .chain(
-            pk.vk
-                .cs
-                .fixed_queries
-                .iter()
-                .map(|&(column, at)| ProverQuery {
-                    point: domain.rotate_omega(*x, at),
-                    poly: &pk.fixed_polys[column.index()],
-                    blind: Blind::default(),
-                }),
-        )
-        .chain(pk.permutation.open(x))
-        // We query the h(X) polynomial at x
-        .chain(vanishing.open(x));
+                        .chain(permutation.open(pk, x))
+                        .chain(lookups.iter().flat_map(move |p| p.open(pk, x)).into_iter())
+                        .chain(
+                            static_lookups
+                                .iter()
+                                .flat_map(move |p| p.open(x))
+                                .into_iter(),
+                        )
+                },
+            )
+            .chain(
+                pk.vk
+                    .cs
+                    .fixed_queries
+                    .iter()
+                    .map(|&(column, at)| ProverQuery {
+                        point: domain.rotate_omega(*x, at),
+                        poly: &pk.fixed_polys[column.index()],
+                        blind: Blind::default(),
+                    }),
+            )
+            .chain(pk.permutation.open(x))
+            // We query the h(X) polynomial at x
+            .chain(vanishing.open(x));
 
     let prover = P::new(params);
     prover
