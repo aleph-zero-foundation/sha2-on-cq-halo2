@@ -56,9 +56,7 @@ impl<E: MultiMillerLoop> Committed<E> {
             .get(&self.table_id)
             .expect("Key not exists");
 
-        let rhs = committed_table.x;
-
-        pairing_batcher.add_pairing(&[(self.lhs, rhs)]);
+        // let rhs = committed_table.x;
 
         Ok(())
     }

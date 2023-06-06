@@ -74,7 +74,7 @@ mod test {
 
         const K: u32 = 4;
 
-        let params = ParamsKZG::<Bn256>::new(K);
+        let params = ParamsKZG::<Bn256>::new(K, &mut OsRng);
 
         let proof =
             create_proof::<_, ProverGWC<_>, _, Blake2bWrite<_, _, Challenge255<_>>>(&params);
@@ -106,7 +106,7 @@ mod test {
 
         const K: u32 = 4;
 
-        let params = ParamsKZG::<Bn256>::new(K);
+        let params = ParamsKZG::<Bn256>::new(K, &mut OsRng);
 
         let proof = create_proof::<Bn256, ProverSHPLONK<_>, _, Blake2bWrite<_, _, Challenge255<_>>>(
             &params,

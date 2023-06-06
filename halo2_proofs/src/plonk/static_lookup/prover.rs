@@ -1,5 +1,6 @@
 use ff::Field;
 use halo2curves::{
+    bn256::{G1Affine, G1},
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
 };
@@ -36,13 +37,17 @@ impl<F: Field> super::Argument<F> {
             .static_table_mapping
             .get(&self.table_id)
             .expect("Key not exists");
-        let x_inv = table.x.invert().unwrap();
+        // // FIXME
+        // let x_inv = table.x.invert().unwrap();
 
-        let cm = Committed {
-            lhs: (<E as Engine>::G1Affine::generator() * x_inv).into(),
-        };
+        // let cm = Committed {
+        //     lhs: (<E as Engine>::G1Affine::generator() * x_inv).into(),
+        // };
 
-        transcript.write_point(cm.lhs)?;
-        Ok(cm)
+        // transcript.write_point(cm.lhs)?;
+        // Ok(cm)
+        Ok(Committed {
+            lhs: <E as Engine>::G1Affine::generator(),
+        })
     }
 }

@@ -362,7 +362,8 @@ impl<G: Group> EvaluationDomain<G> {
         });
     }
 
-    fn ifft(a: &mut [G], omega_inv: G::Scalar, log_n: u32, divisor: G::Scalar) {
+    /// Inverse FFT
+    pub fn ifft(a: &mut [G], omega_inv: G::Scalar, log_n: u32, divisor: G::Scalar) {
         best_fft(a, omega_inv, log_n);
         parallelize(a, |a, _| {
             for a in a {
@@ -401,6 +402,11 @@ impl<G: Group> EvaluationDomain<G> {
     /// Get the generator of the extended domain's multiplicative subgroup.
     pub fn get_extended_omega(&self) -> G::Scalar {
         self.extended_omega
+    }
+
+    /// Get the ifft divisor
+    pub fn ifft_divisor(&self) -> G::Scalar {
+        self.ifft_divisor
     }
 
     /// Multiplies a value by some power of $\omega$, essentially rotating over

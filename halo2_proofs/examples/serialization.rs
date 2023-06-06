@@ -129,7 +129,7 @@ impl Circuit<Fr> for StandardPlonk {
 fn main() {
     let k = 4;
     let circuit = StandardPlonk(Fr::random(OsRng));
-    let params = ParamsKZG::<Bn256>::setup(k, OsRng);
+    let params = ParamsKZG::<Bn256>::setup((1 << k) - 1, 0, OsRng);
     let vk = keygen_vk(&params, &circuit).expect("vk should not fail");
     let pk = keygen_pk(&params, vk, &circuit).expect("pk should not fail");
 

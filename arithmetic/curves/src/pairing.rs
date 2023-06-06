@@ -35,7 +35,8 @@ pub trait Engine: Sized + 'static + Clone {
         + GroupOps<Self::G2Affine>
         + GroupOpsOwned<Self::G2Affine>
         + ScalarMul<Self::Scalar>
-        + ScalarMulOwned<Self::Scalar>;
+        + ScalarMulOwned<Self::Scalar>
+        + _Group<Scalar = Self::Scalar>;
 
     /// The affine representation of an element in G2.
     type G2Affine: PairingCurveAffine<
