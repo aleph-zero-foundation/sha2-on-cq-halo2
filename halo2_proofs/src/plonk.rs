@@ -17,6 +17,7 @@ use crate::helpers::{
     polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice, SerdeCurveAffine,
     SerdePrimeField,
 };
+use crate::poly::kzg::commitment::ParamsCQ;
 use crate::poly::{
     commitment::Params, Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff,
     PinnedEvaluationDomain, Polynomial,
@@ -301,6 +302,7 @@ where
     permutation: permutation::ProvingKey<E::G1Affine>,
     ev: Evaluator<E::G1Affine>,
     static_table_mapping: BTreeMap<StaticTableId<String>, StaticTableValues<E>>,
+    params_cq: ParamsCQ<E>,
 }
 
 impl<E: MultiMillerLoop + Debug> ProvingKey<E>
@@ -377,8 +379,16 @@ where
         let fixed_polys = read_polynomial_vec(reader, format);
         let fixed_cosets = read_polynomial_vec(reader, format);
         let permutation = permutation::ProvingKey::read(reader, format);
+        // TODO:
         // let static_tables = static_lookup::StaticTable::read(reader, format);
         let ev = Evaluator::new(vk.cs());
+
+        // FIXME
+        let params_cq = ParamsCQ {
+            g1_lagrange: vec![],
+            g1_lagrange_minus_lagrange_0: vec![],
+        };
+
         Ok(Self {
             vk,
             l0,
@@ -389,8 +399,9 @@ where
             fixed_cosets,
             permutation,
             ev,
-            // TODO: FIXME
+            // FIXME
             static_table_mapping: BTreeMap::default(),
+            params_cq,
         })
     }
 

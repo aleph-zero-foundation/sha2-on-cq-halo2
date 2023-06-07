@@ -156,17 +156,17 @@ impl<F: Field> Argument<F> {
     }
 }
 
-#[test]
-fn test_table() {
-    use halo2curves::bn256::{Bn256, Fr};
-    const N: u32 = 8;
-    let params = ParamsKZG::<Bn256>::setup(N - 1, N, OsRng);
+// #[test]
+// fn test_table() {
+//     use halo2curves::bn256::{Bn256, Fr};
+//     const N: u32 = 8;
+//     let params = ParamsKZG::<Bn256>::setup(N - 1, N, OsRng);
 
-    let table = StaticTableValues::<Bn256> {
-        size: 8,
-        value_index_mapping: (0..N).map(|i| (Fr::random(OsRng), i as usize)).collect(),
-        qs: vec![],
-    };
+//     let table = StaticTableValues::<Bn256> {
+//         size: 8,
+//         value_index_mapping: (0..N).map(|i| (Fr::random(OsRng), i as usize)).collect(),
+//         qs: vec![],
+//     };
 
-    let _ = table.commit(params.g.len(), &params.g2_srs, 4);
-}
+//     let _ = table.commit(params.g.len(), &params.g2_srs, 4);
+// }

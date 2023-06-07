@@ -245,7 +245,6 @@ where
             })
             .collect::<Vec<_>>()
     };
-    println!("x: {:?}", x);
 
     let advice_evals = (0..num_proofs)
         .map(|_| -> Result<Vec<_>, _> { read_n_scalars(transcript, vk.cs.advice_queries.len()) })
@@ -405,15 +404,11 @@ where
                     )
                     .chain(vk.cs.advice_queries.iter().enumerate().map(
                         move |(query_index, &(column, at))| {
-                            let vq = VerifierQuery::new_commitment(
+                            VerifierQuery::new_commitment(
                                 &advice_commitments[column.index()],
                                 vk.domain.rotate_omega(*x, at),
                                 advice_evals[query_index],
-                            );
-
-                            println!("vq: {:?}", vq);
-
-                            vq
+                            )
                         },
                     ))
                     .chain(permutation.queries(vk, x))

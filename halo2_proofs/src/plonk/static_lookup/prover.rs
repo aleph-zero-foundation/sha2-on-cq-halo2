@@ -116,7 +116,7 @@ impl<F: FieldExt> super::Argument<F> {
 
         let mut m_cm = E::G1::identity();
         for (&index, &multiplicity) in m_sparse.iter() {
-            m_cm = params.g_lagrange[index] * multiplicity + m_cm;
+            m_cm = pk.params_cq.g1_lagrange[index] * multiplicity + m_cm;
         }
 
         let m_cm: E::G1Affine = m_cm.into();
@@ -165,7 +165,7 @@ impl<E: MultiMillerLoop> Committed<E> {
             let _ = a_sparse.insert(index, a_i); // keys are unique so overriding will never occur
 
             // TODO write to transcript
-            a_cm = params.g_lagrange[index] * a_i + a_cm;
+            a_cm = pk.params_cq.g1_lagrange[index] * a_i + a_cm;
             qa_cm = table.qs[index] * a_i + qa_cm;
         }
 

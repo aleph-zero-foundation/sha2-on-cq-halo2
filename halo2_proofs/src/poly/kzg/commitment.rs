@@ -6,7 +6,7 @@ use crate::poly::commitment::{Blind, CommitmentScheme, Params, ParamsProver, Par
 use crate::poly::{Coeff, LagrangeCoeff, Polynomial};
 use crate::SerdeFormat;
 
-use ff::{Field, PrimeField};
+use ff::{BatchInvert, Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Curve, Group as _};
 use halo2curves::pairing::Engine;
 use rand_core::{OsRng, RngCore};
@@ -35,9 +35,165 @@ pub struct ParamsKZG<E: Engine> {
     pub(crate) g_lagrange: Vec<E::G1Affine>,
     pub(crate) g2: E::G2Affine,
     pub(crate) s_g2: E::G2Affine,
-    pub(crate) g2_srs: Vec<E::G2Affine>,
 }
 
+#[derive(Debug, Clone)]
+pub struct SRS<E: Engine> {
+    pub(crate) g1: Vec<E::G1Affine>,
+    pub(crate) g1_lagrange: Vec<E::G1Affine>,
+    pub(crate) g_lagrange_minus_lagrange_0: Vec<E::G1Affine>,
+    pub(crate) g2: Vec<E::G2Affine>,
+}
+
+impl<E: Engine> SRS<E> {
+    /// Return G1
+    pub fn g1(&self) -> &[E::G1Affine] {
+        &self.g1
+    }
+
+    /// Return G2
+    pub fn g2(&self) -> &[E::G2Affine] {
+        &self.g2
+    }
+}
+
+/// Note: for now we store lagrange[0..n] in both params and ParamsCQ
+/// Further consider removing fist n lagrange commitments from ParamsCQ
+#[derive(Debug, Clone)]
+pub struct ParamsCQ<E: Engine> {
+    pub(crate) g1_lagrange: Vec<E::G1Affine>,
+    pub(crate) g1_lagrange_minus_lagrange_0: Vec<E::G1Affine>,
+}
+
+impl<E: Engine> SRS<E> {
+    /// FOR TESTING PURPOSES
+    pub fn setup_from_toxic_waste(max_g1_power: usize, max_g2_power: usize, s: E::Scalar) -> Self {
+        let g1_len = (max_g1_power + 1) as usize;
+        let g2_len = (max_g2_power + 1) as usize;
+        assert!(is_pow_2(g1_len));
+
+        // Calculate g = [G1, [s] G1, [s^2] G1, ..., [s^(n-1)] G1] in parallel.
+        let g1_gen = E::G1Affine::generator();
+        let g2_gen = E::G2Affine::generator();
+
+        let mut g_projective = vec![E::G1::group_zero(); g1_len as usize];
+
+        // TODO: consider to merge this two parallelize
+        parallelize(&mut g_projective, |g, start| {
+            let mut current_g: E::G1 = g1_gen.into();
+
+            current_g *= s.pow_vartime(&[start as u64]);
+            for g in g.iter_mut() {
+                *g = current_g;
+                current_g *= s;
+            }
+        });
+
+        let mut g2_projective = vec![E::G2::group_zero(); g2_len as usize];
+        parallelize(&mut g2_projective, |g, start| {
+            let mut current_g: E::G2 = g2_gen.into();
+
+            current_g *= s.pow_vartime(&[start as u64]);
+            for g in g.iter_mut() {
+                *g = current_g;
+                current_g *= s;
+            }
+        });
+
+        let g1 = {
+            let mut g1 = vec![E::G1Affine::identity(); g1_len as usize];
+            parallelize(&mut g1, |g1, starts| {
+                E::G1::batch_normalize(&g_projective[starts..(starts + g1.len())], g1);
+            });
+            g1
+        };
+
+        let g2 = {
+            let mut g2 = vec![E::G2Affine::identity(); g2_len as usize];
+            parallelize(&mut g2, |g2, starts| {
+                E::G2::batch_normalize(&g2_projective[starts..(starts + g2.len())], g2);
+            });
+            g2
+        };
+
+        let mut g_lagrange_projective = vec![E::G1::group_zero(); g1_len];
+        let mut root = E::Scalar::ROOT_OF_UNITY_INV.invert().unwrap();
+
+        let k = log2(g1_len); // we asserted that g1_len is pow_2
+        for _ in k..E::Scalar::S {
+            root = root.square();
+        }
+
+        let n_inv = Option::<E::Scalar>::from(E::Scalar::from(g1_len as u64).invert())
+            .expect("inversion should be ok for n pow2");
+
+        let multiplier = (s.pow_vartime(&[g1_len as u64]) - E::Scalar::one()) * n_inv;
+        parallelize(&mut g_lagrange_projective, |g, start| {
+            for (idx, g) in g.iter_mut().enumerate() {
+                let offset = start + idx;
+                let root_pow = root.pow_vartime(&[offset as u64]);
+                let scalar = multiplier * root_pow * (s - root_pow).invert().unwrap();
+                *g = g1_gen * scalar;
+            }
+        });
+
+        let g1_lagrange = {
+            let mut g_lagrange = vec![E::G1Affine::identity(); g1_len];
+            parallelize(&mut g_lagrange, |g_lagrange, starts| {
+                E::G1::batch_normalize(
+                    &g_lagrange_projective[starts..(starts + g_lagrange.len())],
+                    g_lagrange,
+                );
+            });
+            drop(g_lagrange_projective);
+            g_lagrange
+        };
+
+        //   [(L_i(x) - L_i(0)) / x]_1
+        // = omega^{-i} * [L_i(x)]_1 - (1 / N) * [x^{N-1}]_1
+        let mut roots_of_unity: Vec<E::Scalar> =
+            std::iter::successors(Some(E::Scalar::one()), |p| Some(*p * root))
+                .take(g1_len)
+                .collect();
+        roots_of_unity.iter_mut().batch_invert();
+
+        let last_power_scaled = *g1.last().unwrap() * n_inv;
+        let g_lagrange_minus_lagrange_0: Vec<E::G1Affine> = g1_lagrange
+            .iter()
+            .zip(roots_of_unity.iter())
+            .map(|(&l_i, w_inv_i)| (l_i * w_inv_i - last_power_scaled).into())
+            .collect();
+
+        Self {
+            g1,
+            g1_lagrange,
+            g_lagrange_minus_lagrange_0,
+            g2,
+        }
+    }
+
+    pub fn truncate_to_pk(&self, k: u32) -> ParamsKZG<E> {
+        let n = 1 << k;
+
+        ParamsKZG {
+            k,
+            n,
+            g: self.g1[..n as usize].to_vec(),
+            g_lagrange: self.g1_lagrange[..n as usize].to_vec(),
+            g2: self.g2[0],
+            s_g2: self.g2[1],
+        }
+    }
+
+    // TODO: make sure we don't have offset by 1 here
+    pub fn truncate_to_cq(&self, longest_table_len: usize) -> ParamsCQ<E> {
+        ParamsCQ {
+            g1_lagrange: self.g1_lagrange[..longest_table_len].to_vec(),
+            g1_lagrange_minus_lagrange_0: self.g_lagrange_minus_lagrange_0[..longest_table_len]
+                .to_vec(),
+        }
+    }
+}
 /// Umbrella commitment scheme construction for all KZG variants
 #[derive(Debug)]
 pub struct KZGCommitmentScheme<E: Engine> {
@@ -67,46 +223,19 @@ where
 impl<E: Engine + Debug> ParamsKZG<E> {
     /// Initializes parameters for the curve, draws toxic secret from given rng.
     /// MUST NOT be used in production.
-    pub fn setup<R: RngCore>(max_g1_power: u32, max_g2_power: u32, rng: R) -> Self {
-        /*
-            k_g2 includes g2, s_g2 as its first elements
-            this is just temporary solution for backwards compatibility with all other tests
-        */
-
+    pub fn setup<R: RngCore>(k: u32, rng: R) -> Self {
         // Largest root of unity exponent of the Engine is `2^E::Scalar::S`, so we can
         // only support FFTs of polynomials below degree `2^E::Scalar::S`.
-        // assert!(k <= E::Scalar::S);
-        // let n: u64 = 1 << k;
-
-        let g1_len = (max_g1_power + 1) as usize;
-        let g2_len = (max_g2_power + 1) as usize;
-        assert!(is_pow_2(g1_len));
-        let k = log2(g1_len);
+        assert!(k <= E::Scalar::S);
+        let n: u64 = 1 << k;
 
         // Calculate g = [G1, [s] G1, [s^2] G1, ..., [s^(n-1)] G1] in parallel.
         let g1 = E::G1Affine::generator();
-        let g2 = E::G2Affine::generator();
-
         let s = <E::Scalar>::random(rng);
 
-        let mut g_projective = vec![E::G1::group_zero(); g1_len as usize];
-
-        // TODO: consider to merge this two parallelize
+        let mut g_projective = vec![E::G1::identity(); n as usize];
         parallelize(&mut g_projective, |g, start| {
             let mut current_g: E::G1 = g1.into();
-
-            current_g *= s.pow_vartime(&[start as u64]);
-            for g in g.iter_mut() {
-                *g = current_g;
-                current_g *= s;
-            }
-        });
-
-        // let g2_size: u64 = 1 << k_g2;
-        let mut g2_projective = vec![E::G2::group_zero(); g2_len as usize];
-        parallelize(&mut g2_projective, |g, start| {
-            let mut current_g: E::G2 = g2.into();
-
             current_g *= s.pow_vartime(&[start as u64]);
             for g in g.iter_mut() {
                 *g = current_g;
@@ -115,29 +244,21 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         });
 
         let g = {
-            let mut g = vec![E::G1Affine::identity(); g1_len as usize];
+            let mut g = vec![E::G1Affine::identity(); n as usize];
             parallelize(&mut g, |g, starts| {
                 E::G1::batch_normalize(&g_projective[starts..(starts + g.len())], g);
             });
             g
         };
 
-        let g2_srs = {
-            let mut g2_srs = vec![E::G2Affine::identity(); g2_len as usize];
-            parallelize(&mut g2_srs, |g2_srs, starts| {
-                E::G2::batch_normalize(&g2_projective[starts..(starts + g2_srs.len())], g2_srs);
-            });
-            g2_srs
-        };
-
-        let mut g_lagrange_projective = vec![E::G1::group_zero(); g1_len];
+        let mut g_lagrange_projective = vec![E::G1::identity(); n as usize];
         let mut root = E::Scalar::ROOT_OF_UNITY_INV.invert().unwrap();
         for _ in k..E::Scalar::S {
             root = root.square();
         }
-        let n_inv = Option::<E::Scalar>::from(E::Scalar::from(g1_len as u64).invert())
+        let n_inv = Option::<E::Scalar>::from(E::Scalar::from(n).invert())
             .expect("inversion should be ok for n = 1<<k");
-        let multiplier = (s.pow_vartime(&[max_g1_power.into()]) - E::Scalar::one()) * n_inv;
+        let multiplier = (s.pow_vartime(&[n as u64]) - E::Scalar::one()) * n_inv;
         parallelize(&mut g_lagrange_projective, |g, start| {
             for (idx, g) in g.iter_mut().enumerate() {
                 let offset = start + idx;
@@ -148,7 +269,7 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         });
 
         let g_lagrange = {
-            let mut g_lagrange = vec![E::G1Affine::identity(); g1_len];
+            let mut g_lagrange = vec![E::G1Affine::identity(); n as usize];
             parallelize(&mut g_lagrange, |g_lagrange, starts| {
                 E::G1::batch_normalize(
                     &g_lagrange_projective[starts..(starts + g_lagrange.len())],
@@ -164,12 +285,11 @@ impl<E: Engine + Debug> ParamsKZG<E> {
 
         Self {
             k,
-            n: g1_len as u64,
+            n,
             g,
             g_lagrange,
             g2,
             s_g2,
-            g2_srs,
         }
     }
 
@@ -181,11 +301,6 @@ impl<E: Engine + Debug> ParamsKZG<E> {
     /// Returns first power of secret on G2
     pub fn s_g2(&self) -> E::G2Affine {
         self.s_g2
-    }
-
-    /// Returns g2 generators
-    pub fn g2_srs(&self) -> &[E::G2Affine] {
-        &self.g2_srs
     }
 
     /// Returns g1 generators
@@ -286,7 +401,6 @@ impl<E: Engine + Debug> ParamsKZG<E> {
             g_lagrange,
             g2,
             s_g2,
-            g2_srs: vec![], // TODO: enable read for this
         }
     }
 }
@@ -365,7 +479,7 @@ where
     }
 
     fn new<R: RngCore>(k: u32, rng: &mut R) -> Self {
-        Self::setup(k, k, rng)
+        unreachable!()
     }
 
     fn commit(&self, poly: &Polynomial<E::Scalar, Coeff>, _: Blind<E::Scalar>) -> E::G1 {

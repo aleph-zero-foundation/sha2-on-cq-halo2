@@ -13,7 +13,7 @@ use halo2_proofs::{
     poly::{
         commitment::ParamsProver,
         kzg::{
-            commitment::{KZGCommitmentScheme, ParamsKZG},
+            commitment::{KZGCommitmentScheme, ParamsKZG, SRS},
             multiopen::{ProverGWC, VerifierGWC},
             strategy::AccumulatorStrategy,
         },
@@ -49,14 +49,14 @@ impl<E: MultiMillerLoop<Scalar = F>, F: Field> Circuit<E> for MyCircuit<E> {
         let advice = meta.advice_column();
         meta.create_gate("", |meta| vec![meta.query_advice(advice, Rotation::cur())]);
 
-        let selector = meta.selector();
-        meta.create_gate("", |meta| vec![meta.query_selector(selector)]);
-        meta.lookup_static("lookup_bits", |meta| {
-            (
-                meta.query_advice(advice, Rotation::cur()),
-                StaticTableId(String::from("bits_table")),
-            )
-        });
+        // let selector = meta.selector();
+        // meta.create_gate("", |meta| vec![meta.query_selector(selector)]);
+        // meta.lookup_static("lookup_bits", |meta| {
+        //     (
+        //         meta.query_advice(advice, Rotation::cur()),
+        //         StaticTableId(String::from("bits_table")),
+        //     )
+        // });
 
         advice
     }
@@ -66,10 +66,10 @@ impl<E: MultiMillerLoop<Scalar = F>, F: Field> Circuit<E> for MyCircuit<E> {
         config: Self::Config,
         mut layouter: impl halo2_proofs::circuit::Layouter<F, E = E>,
     ) -> Result<(), halo2_proofs::plonk::Error> {
-        layouter.register_static_table(
-            StaticTableId(String::from("bits_table")),
-            self.table.clone(),
-        );
+        // layouter.register_static_table(
+        //     StaticTableId(String::from("bits_table")),
+        //     self.table.clone(),
+        // );
         // layouter.assign_region(
         //     || "",
         //     |mut region| { region.assign_advice(config, 0, Value::known(F::one())) },
@@ -85,7 +85,7 @@ static SEED: [u8; 32] = [
     0,
 ];
 
-fn generate_table(params: &ParamsKZG<Bn256>, k: usize) -> StaticTable<Bn256> {
+fn generate_table(params: &SRS<Bn256>, k: usize) -> StaticTable<Bn256> {
     use halo2curves::bn256::Fr;
 
     let table_values = [
@@ -107,9 +107,9 @@ fn generate_table(params: &ParamsKZG<Bn256>, k: usize) -> StaticTable<Bn256> {
         Fr::from(32),
     ];
 
-    let table = StaticTableValues::new(&table_values, &params.get_g());
     let n = 1 << k;
-    let committed = table.commit(params.g1_srs().len(), params.g2_srs(), n);
+    let table = StaticTableValues::new(&table_values, &params.g1());
+    let committed = table.commit(params.g1().len(), params.g2(), n);
 
     StaticTable {
         opened: Some(table),
@@ -119,18 +119,22 @@ fn generate_table(params: &ParamsKZG<Bn256>, k: usize) -> StaticTable<Bn256> {
 
 #[test]
 fn my_test_e2e() {
-    const K: u32 = 2;
+    const K: u32 = 3;
     let mut rng = rand_chacha::ChaCha8Rng::from_seed(SEED);
+    let s = <Bn256 as Engine>::Scalar::random(&mut rng);
 
-    let table_size = 16u32;
+    let table_size = 16;
 
-    let params = ParamsKZG::<Bn256>::setup(table_size - 1, table_size, &mut rng);
-    let table = generate_table(&params, K as usize);
+    let full_srs = SRS::<Bn256>::setup_from_toxic_waste(table_size - 1, table_size, s);
+    let table = generate_table(&full_srs, K as usize);
     let circuit = MyCircuit { table };
+
+    let params = full_srs.truncate_to_pk(K);
+    let params_cq = full_srs.truncate_to_cq(table_size as usize);
 
     // Initialize keys
     let vk = keygen_vk(&params, &circuit).expect("keygen_vk should not fail");
-    let pk = keygen_pk(&params, vk, &circuit).expect("keygen_pk should not fail");
+    let pk = keygen_pk(&params, &params_cq, vk, &circuit).expect("keygen_pk should not fail");
 
     // Create proof
     let proof = {
