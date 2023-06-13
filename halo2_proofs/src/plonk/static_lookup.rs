@@ -24,7 +24,7 @@ pub fn is_pow_2(x: usize) -> bool {
     (x & (x - 1)) == 0
 }
 
-fn log2(x: usize) -> u32 {
+pub fn log2(x: usize) -> u32 {
     (usize::BITS - 1) - x.leading_zeros()
 }
 
@@ -71,8 +71,8 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
 
         let w = domain.get_omega();
 
-        let roots_of_unity_scaled: Vec<E::Scalar> =
-            std::iter::successors(Some(E::Scalar::one()), |p| Some(*p * w * n_inv))
+        let roots_of_unity: Vec<E::Scalar> =
+            std::iter::successors(Some(E::Scalar::one()), |p| Some(*p * w))
                 .take(size)
                 .collect();
 
@@ -85,12 +85,14 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
         );
 
         // TODO: THIS SHOULD BE DONE WITH FK METHOD
-        let qs: Vec<E::G1> = roots_of_unity_scaled
+        let qs: Vec<E::G1> = roots_of_unity
             .iter()
-            .map(|&g_i_scaled| {
-                let g_i = g_i_scaled * n;
+            .map(|&g_i| {
                 let quotient = kate_division(&table_coeffs, g_i);
-                let quotient = quotient.iter().map(|&v| v * g_i_scaled).collect::<Vec<_>>();
+                let quotient = quotient
+                    .iter()
+                    .map(|&v| v * g_i * n_inv)
+                    .collect::<Vec<_>>();
 
                 best_multiexp(&quotient, &srs_g1[..quotient.len()])
             })
@@ -125,6 +127,7 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
         // NOTE: B0 bound is computed generically based on srs size instead of just table size SRS
         // this allows using longer srs or just having multiple tables with different lengths
         let b0_bound_index = srs_g1_len - 1 - (circuit_domain - 2);
+
         StaticCommittedTable {
             zv: zv.into(),
             t: t.into(),

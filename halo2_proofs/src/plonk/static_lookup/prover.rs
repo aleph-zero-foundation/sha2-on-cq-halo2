@@ -9,13 +9,13 @@ use halo2curves::{
 // TODO: COMPUTE A(0) COMMITMENT FROM LAGRANGE AT 0 COMMITMENTS
 
 use crate::{
-    arithmetic::eval_polynomial,
+    arithmetic::{best_multiexp, eval_polynomial},
     plonk::{
         evaluation::evaluate, ChallengeBeta, ChallengeTheta, ChallengeX, Expression, ProvingKey,
     },
     poly::{
         commitment::{Blind, Params, ParamsProver},
-        kzg::commitment::ParamsKZG,
+        kzg::commitment::{ParamsCQ, ParamsKZG},
         Coeff, EvaluationDomain, LagrangeCoeff, Polynomial, ProverQuery,
     },
     transcript::{EncodedChallenge, TranscriptWrite},
@@ -137,6 +137,7 @@ impl<E: MultiMillerLoop> Committed<E> {
         &self,
         pk: &ProvingKey<E>,
         params: &ParamsKZG<E>,
+        cq_params: &ParamsCQ<E>,
         domain: &EvaluationDomain<E::Scalar>,
         beta: ChallengeBeta<E::G1Affine>,
         transcript: &mut T,
@@ -164,7 +165,6 @@ impl<E: MultiMillerLoop> Committed<E> {
             let a_i = multiplicity * (table_values[index] + *beta).invert().unwrap();
             let _ = a_sparse.insert(index, a_i); // keys are unique so overriding will never occur
 
-            // TODO write to transcript
             a_cm = pk.params_cq.g1_lagrange[index] * a_i + a_cm;
             qa_cm = table.qs[index] * a_i + qa_cm;
         }
@@ -191,10 +191,18 @@ impl<E: MultiMillerLoop> Committed<E> {
         let mut p_poly_coeffs: Vec<<E as Engine>::Scalar> =
             vec![E::Scalar::zero(); table.size - 1 - (n - 2)];
         p_poly_coeffs.extend_from_slice(&b0_poly_coeffs);
+        assert_eq!(p_poly_coeffs.len(), table.size);
+
+        // let my_p_poly_coeffs = b0_poly_coeffs[table.size - 1 - (n - 2)..].to_vec();
+        // b0 = [c0, c1, c2, c3, c4]
+        // p0 = b0 * x^p
+        // p0_coeffs = [0, 0, 0, 0, 0, 0, c0, c1, c2, c3, c4]
+
+        // let table_domain = EvaluationDomain::new(2, super::log2(table.size));
 
         // convert to correct poly types
         let b_poly = domain.coeff_from_vec(bs);
-        let p_poly = domain.coeff_from_vec(p_poly_coeffs);
+        // let p_poly = table_domain.coeff_from_vec(p_poly_coeffs);
 
         // TODO append 0 here to fix issue
         b0_poly_coeffs.push(E::Scalar::zero());
@@ -207,7 +215,9 @@ impl<E: MultiMillerLoop> Committed<E> {
         let b0_cm = params.commit(&b0_poly, Blind(E::Scalar::zero()));
         transcript.write_point(b0_cm.into())?;
 
-        let p_cm = params.commit(&p_poly, Blind(E::Scalar::zero()));
+        // msm with cq lagrange
+        // let p_cm = cq_params.commit(&p_poly, Blind(E::Scalar::zero()));
+        let p_cm = best_multiexp(&p_poly_coeffs, &cq_params.g1);
         transcript.write_point(p_cm.into())?;
 
         // Sumcheck identity:
@@ -282,13 +292,11 @@ impl<E: MultiMillerLoop> Evaluated<E> {
         E::G2Affine: SerdeObject,
     {
         iter::empty()
-            // Open lookup product commitments at x
             .chain(Some(ProverQuery {
                 point: *x,
                 poly: &self.constructed.b0,
                 blind: Blind(E::Scalar::zero()),
             }))
-            // Open lookup input commitments at x
             .chain(Some(ProverQuery {
                 point: *x,
                 poly: &self.constructed.f,

@@ -368,6 +368,7 @@ where
             drop(advice_commitments_projective);
 
             for commitment in &advice_commitments {
+                println!("prover advice commitment: {:?}", commitment);
                 self.transcript
                     .write_point(*commitment)
                     .expect("Absorbing advice commitment to transcript failed");
@@ -570,7 +571,14 @@ where
             static_lookups
                 .into_iter()
                 .map(|static_lookup| {
-                    static_lookup.commit_log_derivatives(pk, params, domain, beta, transcript)
+                    static_lookup.commit_log_derivatives(
+                        pk,
+                        params,
+                        &pk.params_cq,
+                        domain,
+                        beta,
+                        transcript,
+                    )
                 })
                 .collect::<Result<Vec<_>, _>>()
         })
@@ -625,6 +633,7 @@ where
     let vanishing = vanishing.construct(params, domain, h_poly, &mut rng, transcript)?;
 
     let x: ChallengeX<_> = transcript.squeeze_challenge_scalar();
+    println!("x: {:?}", x);
     let xn = x.pow(&[params.n(), 0, 0, 0]);
 
     if P::QUERY_INSTANCE {
@@ -665,6 +674,7 @@ where
 
         // Hash each advice column evaluation
         for eval in advice_evals.iter() {
+            println!("prover advice eval: {:?}", eval);
             transcript.write_scalar(*eval)?;
         }
     }
@@ -716,59 +726,60 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let instances =
-        instance
-            .iter()
-            .zip(advice.iter())
-            .zip(permutations.iter())
-            .zip(lookups.iter())
-            .zip(static_lookups.iter())
-            .flat_map(
-                |((((instance, advice), permutation), lookups), static_lookups)| {
-                    iter::empty()
-                        .chain(
-                            P::QUERY_INSTANCE
-                                .then_some(pk.vk.cs.instance_queries.iter().map(
-                                    move |&(column, at)| ProverQuery {
-                                        point: domain.rotate_omega(*x, at),
-                                        poly: &instance.instance_polys[column.index()],
-                                        blind: Blind::default(),
-                                    },
-                                ))
-                                .into_iter()
-                                .flatten(),
-                        )
-                        .chain(pk.vk.cs.advice_queries.iter().map(move |&(column, at)| {
-                            ProverQuery {
-                                point: domain.rotate_omega(*x, at),
-                                poly: &advice.advice_polys[column.index()],
-                                blind: advice.advice_blinds[column.index()],
-                            }
-                        }))
-                        .chain(permutation.open(pk, x))
-                        .chain(lookups.iter().flat_map(move |p| p.open(pk, x)).into_iter())
-                        .chain(
-                            static_lookups
-                                .iter()
-                                .flat_map(move |p| p.open(x))
-                                .into_iter(),
-                        )
-                },
-            )
-            .chain(
-                pk.vk
-                    .cs
-                    .fixed_queries
-                    .iter()
-                    .map(|&(column, at)| ProverQuery {
-                        point: domain.rotate_omega(*x, at),
-                        poly: &pk.fixed_polys[column.index()],
-                        blind: Blind::default(),
-                    }),
-            )
-            .chain(pk.permutation.open(x))
-            // We query the h(X) polynomial at x
-            .chain(vanishing.open(x));
+    let instances = instance
+        .iter()
+        .zip(advice.iter())
+        .zip(permutations.iter())
+        .zip(lookups.iter())
+        .zip(static_lookups.iter())
+        .flat_map(
+            |((((instance, advice), permutation), lookups), static_lookups)| {
+                iter::empty()
+                    .chain(
+                        P::QUERY_INSTANCE
+                            .then_some(pk.vk.cs.instance_queries.iter().map(
+                                move |&(column, at)| ProverQuery {
+                                    point: domain.rotate_omega(*x, at),
+                                    poly: &instance.instance_polys[column.index()],
+                                    blind: Blind::default(),
+                                },
+                            ))
+                            .into_iter()
+                            .flatten(),
+                    )
+                    .chain(pk.vk.cs.advice_queries.iter().map(move |&(column, at)| {
+                        let prover_advice_query = ProverQuery {
+                            point: domain.rotate_omega(*x, at),
+                            poly: &advice.advice_polys[column.index()],
+                            blind: advice.advice_blinds[column.index()],
+                        };
+                        println!("prover_advice_query: {:?}", prover_advice_query);
+                        prover_advice_query
+                    }))
+                    .chain(permutation.open(pk, x))
+                    .chain(lookups.iter().flat_map(move |p| p.open(pk, x)).into_iter())
+                    .chain(
+                        static_lookups
+                            .iter()
+                            .flat_map(move |p| p.open(x))
+                            .into_iter(),
+                    )
+            },
+        )
+        .chain(
+            pk.vk
+                .cs
+                .fixed_queries
+                .iter()
+                .map(|&(column, at)| ProverQuery {
+                    point: domain.rotate_omega(*x, at),
+                    poly: &pk.fixed_polys[column.index()],
+                    blind: Blind::default(),
+                }),
+        )
+        .chain(pk.permutation.open(x))
+        // We query the h(X) polynomial at x
+        .chain(vanishing.open(x));
 
     let prover = P::new(params);
     prover

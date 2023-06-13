@@ -385,6 +385,7 @@ where
 
         // FIXME
         let params_cq = ParamsCQ {
+            g1: vec![],
             g1_lagrange: vec![],
             g1_lagrange_minus_lagrange_0: vec![],
         };

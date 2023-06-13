@@ -199,6 +199,8 @@ where
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
     let x: ChallengeX<_> = transcript.squeeze_challenge_scalar();
+    println!("x: {:?}", x);
+
     let instance_evals = if V::QUERY_INSTANCE {
         (0..num_proofs)
             .map(|_| -> Result<Vec<_>, _> {
@@ -404,11 +406,13 @@ where
                     )
                     .chain(vk.cs.advice_queries.iter().enumerate().map(
                         move |(query_index, &(column, at))| {
-                            VerifierQuery::new_commitment(
+                            let verifier_advice_query = VerifierQuery::new_commitment(
                                 &advice_commitments[column.index()],
                                 vk.domain.rotate_omega(*x, at),
                                 advice_evals[query_index],
-                            )
+                            );
+                            println!("verifier_advice_query: {:?}", verifier_advice_query);
+                            verifier_advice_query
                         },
                     ))
                     .chain(permutation.queries(vk, x))

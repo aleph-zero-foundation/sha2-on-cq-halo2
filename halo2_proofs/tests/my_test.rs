@@ -5,10 +5,11 @@ use std::{fmt::Debug, marker::PhantomData};
 use ff::{Field, PrimeField};
 use halo2_proofs::{
     circuit::{SimpleFloorPlanner, Value},
+    dev::MockProver,
     plonk::{
         create_proof, keygen_pk, keygen_vk,
         static_lookup::{StaticCommittedTable, StaticTable, StaticTableId, StaticTableValues},
-        verify_proof, Advice, Circuit, Column,
+        verify_proof, Advice, Circuit, Column, Selector,
     },
     poly::{
         commitment::ParamsProver,
@@ -47,16 +48,12 @@ impl<E: MultiMillerLoop<Scalar = F>, F: Field> Circuit<E> for MyCircuit<E> {
 
     fn configure(meta: &mut halo2_proofs::plonk::ConstraintSystem<F>) -> Self::Config {
         let advice = meta.advice_column();
-        meta.create_gate("", |meta| vec![meta.query_advice(advice, Rotation::cur())]);
-
-        // let selector = meta.selector();
-        // meta.create_gate("", |meta| vec![meta.query_selector(selector)]);
-        // meta.lookup_static("lookup_bits", |meta| {
-        //     (
-        //         meta.query_advice(advice, Rotation::cur()),
-        //         StaticTableId(String::from("bits_table")),
-        //     )
-        // });
+        meta.lookup_static("lookup_bits", |meta| {
+            (
+                meta.query_advice(advice, Rotation::cur()),
+                StaticTableId(String::from("bits_table")),
+            )
+        });
 
         advice
     }
@@ -66,14 +63,18 @@ impl<E: MultiMillerLoop<Scalar = F>, F: Field> Circuit<E> for MyCircuit<E> {
         config: Self::Config,
         mut layouter: impl halo2_proofs::circuit::Layouter<F, E = E>,
     ) -> Result<(), halo2_proofs::plonk::Error> {
-        // layouter.register_static_table(
-        //     StaticTableId(String::from("bits_table")),
-        //     self.table.clone(),
-        // );
-        // layouter.assign_region(
-        //     || "",
-        //     |mut region| { region.assign_advice(config, 0, Value::known(F::one())) },
-        // )?;
+        layouter.register_static_table(
+            StaticTableId(String::from("bits_table")),
+            self.table.clone(),
+        );
+        layouter.assign_region(
+            || "",
+            |mut region| {
+                region.assign_advice(config, 0, Value::known(F::zero()))?;
+
+                Ok(())
+            },
+        )?;
 
         Ok(())
     }
@@ -89,8 +90,8 @@ fn generate_table(params: &SRS<Bn256>, k: usize) -> StaticTable<Bn256> {
     use halo2curves::bn256::Fr;
 
     let table_values = [
+        Fr::from(0),
         Fr::from(1),
-        Fr::from(4),
         Fr::from(6),
         Fr::from(8),
         Fr::from(10),
@@ -129,8 +130,11 @@ fn my_test_e2e() {
     let table = generate_table(&full_srs, K as usize);
     let circuit = MyCircuit { table };
 
-    let params = full_srs.truncate_to_pk(K);
-    let params_cq = full_srs.truncate_to_cq(table_size as usize);
+    let prover = MockProver::run(K, &circuit, vec![]).unwrap();
+    prover.assert_satisfied();
+
+    let params = ParamsKZG::<Bn256>::setup_from_toxic_waste(K, s);
+    let params_cq = full_srs.truncate_to_cq();
 
     // Initialize keys
     let vk = keygen_vk(&params, &circuit).expect("keygen_vk should not fail");

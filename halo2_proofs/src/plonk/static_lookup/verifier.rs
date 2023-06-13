@@ -226,15 +226,13 @@ where
         x: ChallengeX<E::G1Affine>,
     ) -> impl Iterator<Item = VerifierQuery<'r, E::G1Affine, M>> + Clone {
         iter::empty()
-            // Open lookup b_0 commitment at x
             .chain(Some(VerifierQuery::new_commitment(
                 &self.committed.b0,
                 *x,
                 self.b0_eval,
             )))
-            // Open lookup input commitments at x
             .chain(Some(VerifierQuery::new_commitment(
-                &self.committed.p,
+                &self.committed.committed_witness.f,
                 *x,
                 self.f_eval,
             )))

@@ -32,7 +32,8 @@ pub struct ParamsKZG<E: Engine> {
     pub(crate) k: u32,
     pub(crate) n: u64,
     pub(crate) g: Vec<E::G1Affine>,
-    pub(crate) g_lagrange: Vec<E::G1Affine>,
+    // TODO: make pub(crate)
+    pub g_lagrange: Vec<E::G1Affine>,
     pub(crate) g2: E::G2Affine,
     pub(crate) s_g2: E::G2Affine,
 }
@@ -55,12 +56,18 @@ impl<E: Engine> SRS<E> {
     pub fn g2(&self) -> &[E::G2Affine] {
         &self.g2
     }
+
+    /// Return G1 lagrange
+    pub fn g1_lagrange(&self) -> &[E::G1Affine] {
+        &self.g1_lagrange
+    }
 }
 
 /// Note: for now we store lagrange[0..n] in both params and ParamsCQ
 /// Further consider removing fist n lagrange commitments from ParamsCQ
 #[derive(Debug, Clone)]
 pub struct ParamsCQ<E: Engine> {
+    pub(crate) g1: Vec<E::G1Affine>,
     pub(crate) g1_lagrange: Vec<E::G1Affine>,
     pub(crate) g1_lagrange_minus_lagrange_0: Vec<E::G1Affine>,
 }
@@ -173,24 +180,30 @@ impl<E: Engine> SRS<E> {
     }
 
     pub fn truncate_to_pk(&self, k: u32) -> ParamsKZG<E> {
-        let n = 1 << k;
+        // let n = 1 << k;
 
-        ParamsKZG {
-            k,
-            n,
-            g: self.g1[..n as usize].to_vec(),
-            g_lagrange: self.g1_lagrange[..n as usize].to_vec(),
-            g2: self.g2[0],
-            s_g2: self.g2[1],
-        }
+        // let g = self.g1[..n].to_vec();
+
+        // let ratio = self.g1.len() / n;
+        // let g_lagrange = self.g1_lagrange.iter().cloned().step_by(ratio).collect();
+
+        // // this is very wrong
+        // ParamsKZG {
+        //     k,
+        //     n: n as u64,
+        //     g,
+        //     g_lagrange,
+        //     g2: self.g2[0],
+        //     s_g2: self.g2[1],
+        // }
+        todo!()
     }
 
-    // TODO: make sure we don't have offset by 1 here
-    pub fn truncate_to_cq(&self, longest_table_len: usize) -> ParamsCQ<E> {
+    pub fn truncate_to_cq(&self) -> ParamsCQ<E> {
         ParamsCQ {
-            g1_lagrange: self.g1_lagrange[..longest_table_len].to_vec(),
-            g1_lagrange_minus_lagrange_0: self.g_lagrange_minus_lagrange_0[..longest_table_len]
-                .to_vec(),
+            g1: self.g1.to_vec(),
+            g1_lagrange: self.g1_lagrange.to_vec(),
+            g1_lagrange_minus_lagrange_0: self.g_lagrange_minus_lagrange_0.to_vec(),
         }
     }
 }
@@ -221,6 +234,77 @@ where
 }
 
 impl<E: Engine + Debug> ParamsKZG<E> {
+    /// Initializes parameters for the curve, draws toxic secret from given rng.
+    /// MUST NOT be used in production.
+    pub fn setup_from_toxic_waste(k: u32, s: E::Scalar) -> Self {
+        // Largest root of unity exponent of the Engine is `2^E::Scalar::S`, so we can
+        // only support FFTs of polynomials below degree `2^E::Scalar::S`.
+        assert!(k <= E::Scalar::S);
+        let n: u64 = 1 << k;
+
+        // Calculate g = [G1, [s] G1, [s^2] G1, ..., [s^(n-1)] G1] in parallel.
+        let g1 = E::G1Affine::generator();
+
+        let mut g_projective = vec![E::G1::identity(); n as usize];
+        parallelize(&mut g_projective, |g, start| {
+            let mut current_g: E::G1 = g1.into();
+            current_g *= s.pow_vartime(&[start as u64]);
+            for g in g.iter_mut() {
+                *g = current_g;
+                current_g *= s;
+            }
+        });
+
+        let g = {
+            let mut g = vec![E::G1Affine::identity(); n as usize];
+            parallelize(&mut g, |g, starts| {
+                E::G1::batch_normalize(&g_projective[starts..(starts + g.len())], g);
+            });
+            g
+        };
+
+        let mut g_lagrange_projective = vec![E::G1::identity(); n as usize];
+        let mut root = E::Scalar::ROOT_OF_UNITY_INV.invert().unwrap();
+        for _ in k..E::Scalar::S {
+            root = root.square();
+        }
+        let n_inv = Option::<E::Scalar>::from(E::Scalar::from(n).invert())
+            .expect("inversion should be ok for n = 1<<k");
+        let multiplier = (s.pow_vartime(&[n as u64]) - E::Scalar::one()) * n_inv;
+        parallelize(&mut g_lagrange_projective, |g, start| {
+            for (idx, g) in g.iter_mut().enumerate() {
+                let offset = start + idx;
+                let root_pow = root.pow_vartime(&[offset as u64]);
+                let scalar = multiplier * root_pow * (s - root_pow).invert().unwrap();
+                *g = g1 * scalar;
+            }
+        });
+
+        let g_lagrange = {
+            let mut g_lagrange = vec![E::G1Affine::identity(); n as usize];
+            parallelize(&mut g_lagrange, |g_lagrange, starts| {
+                E::G1::batch_normalize(
+                    &g_lagrange_projective[starts..(starts + g_lagrange.len())],
+                    g_lagrange,
+                );
+            });
+            drop(g_lagrange_projective);
+            g_lagrange
+        };
+
+        let g2 = <E::G2Affine as PrimeCurveAffine>::generator();
+        let s_g2 = (g2 * s).into();
+
+        Self {
+            k,
+            n,
+            g,
+            g_lagrange,
+            g2,
+            s_g2,
+        }
+    }
+
     /// Initializes parameters for the curve, draws toxic secret from given rng.
     /// MUST NOT be used in production.
     pub fn setup<R: RngCore>(k: u32, rng: R) -> Self {

@@ -17,7 +17,7 @@ use std::marker::PhantomData;
 /// domain of size $2^{k} * j$ with $j \neq 0$.
 #[derive(Clone, Debug)]
 pub struct EvaluationDomain<G: Group> {
-    n: u64,
+    pub n: u64,
     k: u32,
     extended_k: u32,
     omega: G::Scalar,
