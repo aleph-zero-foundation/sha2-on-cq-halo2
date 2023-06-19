@@ -39,14 +39,14 @@ pub struct ParamsKZG<E: Engine> {
 }
 
 #[derive(Debug, Clone)]
-pub struct SRS<E: Engine> {
+pub struct TableSRS<E: Engine> {
     pub(crate) g1: Vec<E::G1Affine>,
     pub(crate) g1_lagrange: Vec<E::G1Affine>,
     pub(crate) g_lagrange_opening_at_0: Vec<E::G1Affine>,
     pub(crate) g2: Vec<E::G2Affine>,
 }
 
-impl<E: Engine> SRS<E> {
+impl<E: Engine> TableSRS<E> {
     /// Return G1
     pub fn g1(&self) -> &[E::G1Affine] {
         &self.g1
@@ -61,18 +61,14 @@ impl<E: Engine> SRS<E> {
     pub fn g1_lagrange(&self) -> &[E::G1Affine] {
         &self.g1_lagrange
     }
+
+    /// Return G1 lagrange openings at 0
+    pub fn g_lagrange_opening_at_0(&self) -> &[E::G1Affine] {
+        &self.g_lagrange_opening_at_0
+    }
 }
 
-/// Note: for now we store lagrange[0..n] in both params and ParamsCQ
-/// Further consider removing fist n lagrange commitments from ParamsCQ
-#[derive(Debug, Clone)]
-pub struct ParamsCQ<E: Engine> {
-    pub(crate) g1: Vec<E::G1Affine>,
-    pub(crate) g1_lagrange: Vec<E::G1Affine>,
-    pub(crate) g_lagrange_opening_at_0: Vec<E::G1Affine>,
-}
-
-impl<E: Engine> SRS<E> {
+impl<E: Engine> TableSRS<E> {
     /// FOR TESTING PURPOSES
     pub fn setup_from_toxic_waste(max_g1_power: usize, max_g2_power: usize, s: E::Scalar) -> Self {
         let g1_len = (max_g1_power + 1) as usize;
@@ -165,15 +161,6 @@ impl<E: Engine> SRS<E> {
                 .collect();
         roots_of_unity_inv.iter_mut().batch_invert();
 
-        let mut roots_of_unity: Vec<E::Scalar> =
-            std::iter::successors(Some(E::Scalar::one()), |p| Some(*p * root))
-                .take(g1_len)
-                .collect();
-
-        for i in 0..g1_len {
-            assert_eq!(roots_of_unity_inv[i], roots_of_unity[(g1_len - i) % g1_len])
-        }
-
         // [x^{N - 1}]_1 * (1 / N)
         let last_power_scaled = *g1.last().unwrap() * n_inv;
         let g_lagrange_opening_at_0: Vec<E::G1Affine> = g1_lagrange
@@ -182,51 +169,11 @@ impl<E: Engine> SRS<E> {
             .map(|(&l_i, w_inv_i)| (l_i * w_inv_i - last_power_scaled).into())
             .collect();
 
-        {
-            /*
-               should equal (L_i(s) - L_i(0)) / s, where L_i(0) = 1 / N
-            */
-
-            // Sanity check: Evaluate lagrange bases at 0
-            /*
-               (w^i * (s^n - 1) * n_inv * (s - w^i).invert() - (-w^i * n_inv * -w^i_inv)) * s.invert()
-
-            */
-        }
-
         Self {
             g1,
             g1_lagrange,
             g_lagrange_opening_at_0,
             g2,
-        }
-    }
-
-    pub fn truncate_to_pk(&self, k: u32) -> ParamsKZG<E> {
-        // let n = 1 << k;
-
-        // let g = self.g1[..n].to_vec();
-
-        // let ratio = self.g1.len() / n;
-        // let g_lagrange = self.g1_lagrange.iter().cloned().step_by(ratio).collect();
-
-        // // this is very wrong
-        // ParamsKZG {
-        //     k,
-        //     n: n as u64,
-        //     g,
-        //     g_lagrange,
-        //     g2: self.g2[0],
-        //     s_g2: self.g2[1],
-        // }
-        todo!()
-    }
-
-    pub fn truncate_to_cq(&self) -> ParamsCQ<E> {
-        ParamsCQ {
-            g1: self.g1.to_vec(),
-            g1_lagrange: self.g1_lagrange.to_vec(),
-            g_lagrange_opening_at_0: self.g_lagrange_opening_at_0.to_vec(),
         }
     }
 }

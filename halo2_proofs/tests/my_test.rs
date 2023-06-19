@@ -1,6 +1,6 @@
 use group::{Curve, Group};
 use rand::{Rng, SeedableRng};
-use std::{fmt::Debug, marker::PhantomData};
+use std::{collections::BTreeMap, fmt::Debug, marker::PhantomData};
 
 use ff::{Field, PrimeField};
 use halo2_proofs::{
@@ -8,13 +8,15 @@ use halo2_proofs::{
     dev::MockProver,
     plonk::{
         create_proof, keygen_pk, keygen_vk,
-        static_lookup::{StaticCommittedTable, StaticTable, StaticTableId, StaticTableValues},
+        static_lookup::{
+            StaticCommittedTable, StaticTable, StaticTableConfig, StaticTableId, StaticTableValues,
+        },
         verify_proof, Advice, Circuit, Column, Selector,
     },
     poly::{
         commitment::ParamsProver,
         kzg::{
-            commitment::{KZGCommitmentScheme, ParamsKZG, SRS},
+            commitment::{KZGCommitmentScheme, ParamsKZG, TableSRS},
             multiopen::{ProverGWC, VerifierGWC},
             strategy::AccumulatorStrategy,
         },
@@ -90,7 +92,7 @@ static SEED: [u8; 32] = [
     0,
 ];
 
-fn generate_table(params: &SRS<Bn256>, k: usize) -> StaticTable<Bn256> {
+fn generate_table(params: &TableSRS<Bn256>, k: usize) -> StaticTable<Bn256> {
     use halo2curves::bn256::Fr;
 
     let table_values = [
@@ -128,21 +130,31 @@ fn my_test_e2e() {
     let mut rng = rand_chacha::ChaCha8Rng::from_seed(SEED);
     let s = <Bn256 as Engine>::Scalar::random(&mut rng);
 
-    let table_size = 16;
+    let table_1_size = 16;
 
-    let full_srs = SRS::<Bn256>::setup_from_toxic_waste(table_size - 1, table_size, s);
-    let table = generate_table(&full_srs, K as usize);
+    let table_1_srs = TableSRS::<Bn256>::setup_from_toxic_waste(table_1_size - 1, table_1_size, s);
+    let table = generate_table(&table_1_srs, K as usize);
     let circuit = MyCircuit { table };
 
     let prover = MockProver::run(K, &circuit, vec![]).unwrap();
     prover.assert_satisfied();
 
     let params = ParamsKZG::<Bn256>::setup_from_toxic_waste(K, s);
-    let params_cq = full_srs.truncate_to_cq();
+
+    let config = StaticTableConfig::new(
+        table_1_size,
+        table_1_srs.g1_lagrange().to_vec(),
+        table_1_srs.g_lagrange_opening_at_0().to_vec(),
+    );
+    let mut configs = BTreeMap::new();
+    configs.insert(table_1_size, config);
+
+    let b0_g1_bound = table_1_srs.g1()[((1 << K) + 1)..].to_vec();
 
     // Initialize keys
     let vk = keygen_vk(&params, &circuit).expect("keygen_vk should not fail");
-    let pk = keygen_pk(&params, &params_cq, vk, &circuit).expect("keygen_pk should not fail");
+    let pk =
+        keygen_pk(&params, configs, b0_g1_bound, vk, &circuit).expect("keygen_pk should not fail");
 
     // Create proof
     let proof = {

@@ -17,7 +17,6 @@ use crate::helpers::{
     polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice, SerdeCurveAffine,
     SerdePrimeField,
 };
-use crate::poly::kzg::commitment::ParamsCQ;
 use crate::poly::{
     commitment::Params, Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff,
     PinnedEvaluationDomain, Polynomial,
@@ -50,7 +49,9 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::io;
 
-use self::static_lookup::{StaticCommittedTable, StaticTable, StaticTableId, StaticTableValues};
+use self::static_lookup::{
+    StaticCommittedTable, StaticTable, StaticTableConfig, StaticTableId, StaticTableValues,
+};
 
 /// This is a verifying key which allows for the verification of proofs for a
 /// particular circuit.
@@ -302,7 +303,8 @@ where
     permutation: permutation::ProvingKey<E::G1Affine>,
     ev: Evaluator<E::G1Affine>,
     static_table_mapping: BTreeMap<StaticTableId<String>, StaticTableValues<E>>,
-    params_cq: ParamsCQ<E>,
+    static_table_configs: BTreeMap<usize, StaticTableConfig<E>>,
+    b0_g1_bound: Vec<E::G1Affine>,
 }
 
 impl<E: MultiMillerLoop + Debug> ProvingKey<E>
@@ -383,13 +385,6 @@ where
         // let static_tables = static_lookup::StaticTable::read(reader, format);
         let ev = Evaluator::new(vk.cs());
 
-        // FIXME
-        let params_cq = ParamsCQ {
-            g1: vec![],
-            g1_lagrange: vec![],
-            g_lagrange_opening_at_0: vec![],
-        };
-
         Ok(Self {
             vk,
             l0,
@@ -402,7 +397,8 @@ where
             ev,
             // FIXME
             static_table_mapping: BTreeMap::default(),
-            params_cq,
+            static_table_configs: BTreeMap::default(),
+            b0_g1_bound: vec![],
         })
     }
 

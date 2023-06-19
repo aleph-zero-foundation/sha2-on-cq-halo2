@@ -7,7 +7,7 @@ use ff::Field;
 use group::Curve;
 use halo2curves::{pairing::MultiMillerLoop, serde::SerdeObject};
 
-use super::static_lookup::{StaticCommittedTable, StaticTableValues};
+use super::static_lookup::{StaticCommittedTable, StaticTableConfig, StaticTableValues};
 use super::{
     circuit::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
@@ -18,7 +18,6 @@ use super::{
     static_lookup::{StaticTable, StaticTableId},
     Assigned, Challenge, Error, Expression, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
 };
-use crate::poly::kzg::commitment::ParamsCQ;
 use crate::{
     arithmetic::{parallelize, CurveAffine},
     circuit::Value,
@@ -278,7 +277,8 @@ where
 /// Generate a `ProvingKey` from a `VerifyingKey` and an instance of `Circuit`.
 pub fn keygen_pk<'params, E, P, ConcreteCircuit>(
     params: &P,
-    params_cq: &'params ParamsCQ<E>,
+    static_table_configs: BTreeMap<usize, StaticTableConfig<E>>,
+    b0_g1_bound: Vec<E::G1Affine>,
     vk: VerifyingKey<E>,
     circuit: &ConcreteCircuit,
 ) -> Result<ProvingKey<E>, Error>
@@ -391,6 +391,7 @@ where
         permutation: permutation_pk,
         ev,
         static_table_mapping,
-        params_cq: params_cq.clone(),
+        static_table_configs,
+        b0_g1_bound,
     })
 }

@@ -44,6 +44,27 @@ impl<T: Clone + Ord> StaticTableId<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct StaticTableConfig<E: MultiMillerLoop> {
+    size: usize,
+    g1_lagrange: Vec<E::G1Affine>,
+    g_lagrange_opening_at_0: Vec<E::G1Affine>,
+}
+
+impl<E: MultiMillerLoop> StaticTableConfig<E> {
+    pub fn new(
+        size: usize,
+        g1_lagrange: Vec<E::G1Affine>,
+        g_lagrange_opening_at_0: Vec<E::G1Affine>,
+    ) -> Self {
+        Self {
+            size,
+            g1_lagrange,
+            g_lagrange_opening_at_0,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct StaticTableValues<E: MultiMillerLoop> {
     size: usize,
@@ -61,7 +82,7 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
 
         let value_index_mapping: BTreeMap<E::Scalar, usize> =
             values.iter().enumerate().map(|(i, &f)| (f, i)).collect();
-        let keys_len = value_index_mapping.keys().len();
+        let keys_len: usize = value_index_mapping.keys().len();
         assert_eq!(size, keys_len); // check that table is all unique values
 
         // compute all qs

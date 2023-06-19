@@ -15,7 +15,7 @@ use crate::{
     },
     poly::{
         commitment::{Blind, Params, ParamsProver},
-        kzg::commitment::{ParamsCQ, ParamsKZG},
+        kzg::commitment::ParamsKZG,
         Coeff, EvaluationDomain, LagrangeCoeff, Polynomial, ProverQuery,
     },
     transcript::{EncodedChallenge, TranscriptWrite},
@@ -72,6 +72,11 @@ impl<F: FieldExt> super::Argument<F> {
             .get(&self.table_id)
             .expect("Key not exists");
 
+        let table_config = pk
+            .static_table_configs
+            .get(&table.size)
+            .expect("Config does not exists");
+
         let compress_expressions = |expressions: &[Expression<E::Scalar>]| {
             let compressed_expression = expressions
                 .iter()
@@ -117,7 +122,7 @@ impl<F: FieldExt> super::Argument<F> {
 
         let mut m_cm = E::G1::identity();
         for (&index, &multiplicity) in m_sparse.iter() {
-            m_cm = pk.params_cq.g1_lagrange[index] * multiplicity + m_cm;
+            m_cm = table_config.g1_lagrange[index] * multiplicity + m_cm;
         }
 
         let m_cm: E::G1Affine = m_cm.into();
@@ -138,7 +143,6 @@ impl<E: MultiMillerLoop> Committed<E> {
         &self,
         pk: &ProvingKey<E>,
         params: &ParamsKZG<E>,
-        cq_params: &ParamsCQ<E>,
         domain: &EvaluationDomain<E::Scalar>,
         beta: ChallengeBeta<E::G1Affine>,
         transcript: &mut T,
@@ -156,6 +160,11 @@ impl<E: MultiMillerLoop> Committed<E> {
             .get(&self.table_id)
             .expect("Key not exists");
 
+        let table_config = pk
+            .static_table_configs
+            .get(&table.size)
+            .expect("Config does not exists");
+
         let mut a_cm = E::G1::identity();
         let mut qa_cm = E::G1::identity();
         let mut a0_cm = E::G1::identity();
@@ -165,12 +174,9 @@ impl<E: MultiMillerLoop> Committed<E> {
         for (&index, &multiplicity) in self.m_sparse.iter() {
             let a_i = multiplicity * (table_values[index] + *beta).invert().unwrap();
 
-            // println!("index i: {}", index);
-            // println!("mul i: {:?}", multiplicity);
-
-            a_cm = pk.params_cq.g1_lagrange[index] * a_i + a_cm;
+            a_cm = table_config.g1_lagrange[index] * a_i + a_cm;
             qa_cm = table.qs[index] * a_i + qa_cm;
-            a0_cm = pk.params_cq.g_lagrange_opening_at_0[index] * a_i + a0_cm;
+            a0_cm = table_config.g_lagrange_opening_at_0[index] * a_i + a0_cm;
         }
 
         let blinding_factors = pk.vk.cs.blinding_factors();
@@ -195,18 +201,10 @@ impl<E: MultiMillerLoop> Committed<E> {
         // (b - b(0)) / X
         let mut b0_poly_coeffs: Vec<<E as Engine>::Scalar> = bs[1..].to_vec();
 
-        // TODO: QB part will be handled with full quotient argument and multiopen
-
         let n = 1 << domain.k();
-        let mut p_poly_coeffs: Vec<<E as Engine>::Scalar> =
-            vec![E::Scalar::zero(); table.size - 1 - (n - 2)];
-        p_poly_coeffs.extend_from_slice(&b0_poly_coeffs);
-        assert_eq!(p_poly_coeffs.len(), table.size);
-
-        // convert to correct poly types
         let b_poly = domain.coeff_from_vec(bs);
 
-        // sanity
+        #[cfg(feature = "sanity-checks")]
         {
             let mut selector = vec![E::Scalar::one(); usable_rows];
             selector.extend_from_slice(&vec![E::Scalar::zero(); n - usable_rows]);
@@ -221,10 +219,11 @@ impl<E: MultiMillerLoop> Committed<E> {
                 )
             }
         }
+        let p_cm = best_multiexp(&b0_poly_coeffs, &pk.b0_g1_bound);
 
-        // TODO append 0 here to fix issue
         b0_poly_coeffs.push(E::Scalar::zero());
-        let b0_poly = domain.coeff_from_vec(b0_poly_coeffs);
+        let b0_poly: Polynomial<<E as Engine>::Scalar, Coeff> =
+            domain.coeff_from_vec(b0_poly_coeffs.clone());
 
         // write all commitements to transcript
         transcript.write_point(a_cm.into())?;
@@ -232,11 +231,8 @@ impl<E: MultiMillerLoop> Committed<E> {
         transcript.write_point(a0_cm.into())?;
 
         let b0_cm = params.commit(&b0_poly, Blind(E::Scalar::zero()));
-        transcript.write_point(b0_cm.into())?;
 
-        // msm with cq lagrange
-        // let p_cm = cq_params.commit(&p_poly, Blind(E::Scalar::zero()));
-        let p_cm = best_multiexp(&p_poly_coeffs, &cq_params.g1);
+        transcript.write_point(b0_cm.into())?;
         transcript.write_point(p_cm.into())?;
 
         // Sumcheck identity:

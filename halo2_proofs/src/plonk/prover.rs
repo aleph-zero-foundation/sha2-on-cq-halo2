@@ -570,14 +570,7 @@ where
             static_lookups
                 .into_iter()
                 .map(|static_lookup| {
-                    static_lookup.commit_log_derivatives(
-                        pk,
-                        params,
-                        &pk.params_cq,
-                        domain,
-                        beta,
-                        transcript,
-                    )
+                    static_lookup.commit_log_derivatives(pk, params, domain, beta, transcript)
                 })
                 .collect::<Result<Vec<_>, _>>()
         })
