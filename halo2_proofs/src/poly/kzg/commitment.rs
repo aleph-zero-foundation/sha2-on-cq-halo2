@@ -42,7 +42,7 @@ pub struct ParamsKZG<E: Engine> {
 pub struct SRS<E: Engine> {
     pub(crate) g1: Vec<E::G1Affine>,
     pub(crate) g1_lagrange: Vec<E::G1Affine>,
-    pub(crate) g_lagrange_minus_lagrange_0: Vec<E::G1Affine>,
+    pub(crate) g_lagrange_opening_at_0: Vec<E::G1Affine>,
     pub(crate) g2: Vec<E::G2Affine>,
 }
 
@@ -69,7 +69,7 @@ impl<E: Engine> SRS<E> {
 pub struct ParamsCQ<E: Engine> {
     pub(crate) g1: Vec<E::G1Affine>,
     pub(crate) g1_lagrange: Vec<E::G1Affine>,
-    pub(crate) g1_lagrange_minus_lagrange_0: Vec<E::G1Affine>,
+    pub(crate) g_lagrange_opening_at_0: Vec<E::G1Affine>,
 }
 
 impl<E: Engine> SRS<E> {
@@ -134,6 +134,7 @@ impl<E: Engine> SRS<E> {
         let n_inv = Option::<E::Scalar>::from(E::Scalar::from(g1_len as u64).invert())
             .expect("inversion should be ok for n pow2");
 
+        // x^N - 1
         let multiplier = (s.pow_vartime(&[g1_len as u64]) - E::Scalar::one()) * n_inv;
         parallelize(&mut g_lagrange_projective, |g, start| {
             for (idx, g) in g.iter_mut().enumerate() {
@@ -158,23 +159,45 @@ impl<E: Engine> SRS<E> {
 
         //   [(L_i(x) - L_i(0)) / x]_1
         // = omega^{-i} * [L_i(x)]_1 - (1 / N) * [x^{N-1}]_1
+        let mut roots_of_unity_inv: Vec<E::Scalar> =
+            std::iter::successors(Some(E::Scalar::one()), |p| Some(*p * root))
+                .take(g1_len)
+                .collect();
+        roots_of_unity_inv.iter_mut().batch_invert();
+
         let mut roots_of_unity: Vec<E::Scalar> =
             std::iter::successors(Some(E::Scalar::one()), |p| Some(*p * root))
                 .take(g1_len)
                 .collect();
-        roots_of_unity.iter_mut().batch_invert();
 
+        for i in 0..g1_len {
+            assert_eq!(roots_of_unity_inv[i], roots_of_unity[(g1_len - i) % g1_len])
+        }
+
+        // [x^{N - 1}]_1 * (1 / N)
         let last_power_scaled = *g1.last().unwrap() * n_inv;
-        let g_lagrange_minus_lagrange_0: Vec<E::G1Affine> = g1_lagrange
+        let g_lagrange_opening_at_0: Vec<E::G1Affine> = g1_lagrange
             .iter()
-            .zip(roots_of_unity.iter())
+            .zip(roots_of_unity_inv.iter())
             .map(|(&l_i, w_inv_i)| (l_i * w_inv_i - last_power_scaled).into())
             .collect();
+
+        {
+            /*
+               should equal (L_i(s) - L_i(0)) / s, where L_i(0) = 1 / N
+            */
+
+            // Sanity check: Evaluate lagrange bases at 0
+            /*
+               (w^i * (s^n - 1) * n_inv * (s - w^i).invert() - (-w^i * n_inv * -w^i_inv)) * s.invert()
+
+            */
+        }
 
         Self {
             g1,
             g1_lagrange,
-            g_lagrange_minus_lagrange_0,
+            g_lagrange_opening_at_0,
             g2,
         }
     }
@@ -203,7 +226,7 @@ impl<E: Engine> SRS<E> {
         ParamsCQ {
             g1: self.g1.to_vec(),
             g1_lagrange: self.g1_lagrange.to_vec(),
-            g1_lagrange_minus_lagrange_0: self.g_lagrange_minus_lagrange_0.to_vec(),
+            g_lagrange_opening_at_0: self.g_lagrange_opening_at_0.to_vec(),
         }
     }
 }

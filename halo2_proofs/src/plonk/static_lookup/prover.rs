@@ -101,13 +101,16 @@ impl<F: FieldExt> super::Argument<F> {
         let usable_rows = params.n() as usize - (blinding_factors + 1);
         let mut m_sparse = BTreeMap::<usize, E::Scalar>::default();
         for fi in f.iter().take(usable_rows) {
+            println!("fi: {:?}", fi);
             let index = table
                 .value_index_mapping
                 .get(fi)
                 .expect(&format!("{:?} not in table", *fi));
-            let zero = E::Scalar::zero();
-            let multiplicity = m_sparse.entry(*index).or_insert(zero);
+
+            println!("index: {}", index);
+            let multiplicity = m_sparse.entry(*index).or_insert(E::Scalar::zero());
             *multiplicity += E::Scalar::one();
+            println!("multiplicity: {:?}", multiplicity);
         }
 
         // zk is not currently supported
@@ -155,25 +158,33 @@ impl<E: MultiMillerLoop> Committed<E> {
             .get(&self.table_id)
             .expect("Key not exists");
 
-        let mut a_sparse = BTreeMap::<usize, E::Scalar>::default();
         let mut a_cm = E::G1::identity();
         let mut qa_cm = E::G1::identity();
+        let mut a0_cm = E::G1::identity();
 
         let table_values: Vec<E::Scalar> = table.value_index_mapping.keys().cloned().collect();
         // step 2&3&4: computes A sparse representation, a commitment and qa commitment in single pass
         for (&index, &multiplicity) in self.m_sparse.iter() {
             let a_i = multiplicity * (table_values[index] + *beta).invert().unwrap();
-            let _ = a_sparse.insert(index, a_i); // keys are unique so overriding will never occur
+
+            // println!("index i: {}", index);
+            // println!("mul i: {:?}", multiplicity);
 
             a_cm = pk.params_cq.g1_lagrange[index] * a_i + a_cm;
             qa_cm = table.qs[index] * a_i + qa_cm;
+            a0_cm = pk.params_cq.g_lagrange_opening_at_0[index] * a_i + a0_cm;
         }
 
+        let blinding_factors = pk.vk.cs.blinding_factors();
+        let usable_rows = params.n() as usize - (blinding_factors + 1);
         let mut bs: Vec<_> = self
             .f
             .iter()
+            .take(usable_rows)
             .map(|&fi| (fi + *beta).invert().unwrap())
             .collect();
+
+        bs.extend_from_slice(&vec![E::Scalar::zero(); blinding_factors + 1]);
 
         EvaluationDomain::ifft(
             bs.as_mut_slice(),
@@ -193,13 +204,6 @@ impl<E: MultiMillerLoop> Committed<E> {
         p_poly_coeffs.extend_from_slice(&b0_poly_coeffs);
         assert_eq!(p_poly_coeffs.len(), table.size);
 
-        // let my_p_poly_coeffs = b0_poly_coeffs[table.size - 1 - (n - 2)..].to_vec();
-        // b0 = [c0, c1, c2, c3, c4]
-        // p0 = b0 * x^p
-        // p0_coeffs = [0, 0, 0, 0, 0, 0, c0, c1, c2, c3, c4]
-
-        // let table_domain = EvaluationDomain::new(2, super::log2(table.size));
-
         // convert to correct poly types
         let b_poly = domain.coeff_from_vec(bs);
         // let p_poly = table_domain.coeff_from_vec(p_poly_coeffs);
@@ -211,6 +215,7 @@ impl<E: MultiMillerLoop> Committed<E> {
         // write all commitements to transcript
         transcript.write_point(a_cm.into())?;
         transcript.write_point(qa_cm.into())?;
+        transcript.write_point(a0_cm.into())?;
 
         let b0_cm = params.commit(&b0_poly, Blind(E::Scalar::zero()));
         transcript.write_point(b0_cm.into())?;

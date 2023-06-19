@@ -368,7 +368,6 @@ where
             drop(advice_commitments_projective);
 
             for commitment in &advice_commitments {
-                println!("prover advice commitment: {:?}", commitment);
                 self.transcript
                     .write_point(*commitment)
                     .expect("Absorbing advice commitment to transcript failed");
@@ -633,7 +632,6 @@ where
     let vanishing = vanishing.construct(params, domain, h_poly, &mut rng, transcript)?;
 
     let x: ChallengeX<_> = transcript.squeeze_challenge_scalar();
-    println!("x: {:?}", x);
     let xn = x.pow(&[params.n(), 0, 0, 0]);
 
     if P::QUERY_INSTANCE {
@@ -674,7 +672,6 @@ where
 
         // Hash each advice column evaluation
         for eval in advice_evals.iter() {
-            println!("prover advice eval: {:?}", eval);
             transcript.write_scalar(*eval)?;
         }
     }
@@ -753,7 +750,6 @@ where
                             poly: &advice.advice_polys[column.index()],
                             blind: advice.advice_blinds[column.index()],
                         };
-                        println!("prover_advice_query: {:?}", prover_advice_query);
                         prover_advice_query
                     }))
                     .chain(permutation.open(pk, x))

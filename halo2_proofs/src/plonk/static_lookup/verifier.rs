@@ -12,8 +12,9 @@ use crate::{
     transcript::{EncodedChallenge, TranscriptRead},
 };
 use ff::Field;
+use group::{prime::PrimeCurveAffine, Group};
 use halo2curves::batch_pairing::PairingBatcher;
-use halo2curves::pairing::MultiMillerLoop;
+use halo2curves::pairing::{Engine, MultiMillerLoop};
 use halo2curves::serde::SerdeObject;
 use std::fmt::Debug;
 
@@ -27,6 +28,7 @@ pub struct CommittedLogDerivative<E: MultiMillerLoop> {
     committed_witness: CommittedWitness<E>,
     a: E::G1Affine,
     qa: E::G1Affine,
+    a0: E::G1Affine,
     b0: E::G1Affine,
     p: E::G1Affine,
 }
@@ -68,6 +70,7 @@ impl<E: MultiMillerLoop> CommittedWitness<E> {
     ) -> Result<CommittedLogDerivative<E>, Error> {
         let a = transcript.read_point()?;
         let qa = transcript.read_point()?;
+        let a0 = transcript.read_point()?;
         let b0 = transcript.read_point()?;
         let p = transcript.read_point()?;
 
@@ -75,6 +78,7 @@ impl<E: MultiMillerLoop> CommittedWitness<E> {
             committed_witness: self,
             a,
             qa,
+            a0,
             b0,
             p,
         })
@@ -130,6 +134,9 @@ where
         let m_minus_beta_a: E::G1Affine =
             (self.committed.committed_witness.m - (self.committed.a * *beta).into()).into();
 
+        let a_at_zero_cm: E::G1Affine =
+            (<E as Engine>::G1Affine::generator() * self.a_at_zero).into();
+
         pairing_batcher.add_pairing(&[
             // e(a, [T(x)]_2)
             (self.committed.a, table.t),
@@ -141,6 +148,10 @@ where
             (self.committed.b0, table.x_b0_bound),
             // e(-p, [1]_2)
             ((-self.committed.p).into(), params.g2()),
+            // e(a - [a0], [1]_2)
+            ((self.committed.a - a_at_zero_cm).into(), params.g2()),
+            // e(-a0, [x]_2)
+            ((-self.committed.a0).into(), params.s_g2()),
         ]);
 
         Ok(())

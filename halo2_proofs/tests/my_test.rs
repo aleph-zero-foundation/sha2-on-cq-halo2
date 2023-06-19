@@ -37,7 +37,7 @@ struct MyCircuit<E: MultiMillerLoop> {
     table: StaticTable<E>,
 }
 
-impl<E: MultiMillerLoop<Scalar = F>, F: Field> Circuit<E> for MyCircuit<E> {
+impl<E: MultiMillerLoop<Scalar = F>, F: Field + FieldExt> Circuit<E> for MyCircuit<E> {
     type Config = Column<Advice>;
 
     type FloorPlanner = SimpleFloorPlanner<E>;
@@ -70,7 +70,11 @@ impl<E: MultiMillerLoop<Scalar = F>, F: Field> Circuit<E> for MyCircuit<E> {
         layouter.assign_region(
             || "",
             |mut region| {
-                region.assign_advice(config, 0, Value::known(F::zero()))?;
+                region.assign_advice(
+                    config,
+                    0,
+                    Value::known(<E as Engine>::Scalar::from_u128(30)),
+                )?;
 
                 Ok(())
             },

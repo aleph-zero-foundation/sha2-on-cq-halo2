@@ -199,7 +199,6 @@ where
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
     let x: ChallengeX<_> = transcript.squeeze_challenge_scalar();
-    println!("x: {:?}", x);
 
     let instance_evals = if V::QUERY_INSTANCE {
         (0..num_proofs)
@@ -411,7 +410,6 @@ where
                                 vk.domain.rotate_omega(*x, at),
                                 advice_evals[query_index],
                             );
-                            println!("verifier_advice_query: {:?}", verifier_advice_query);
                             verifier_advice_query
                         },
                     ))
