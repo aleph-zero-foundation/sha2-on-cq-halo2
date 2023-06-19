@@ -21,7 +21,7 @@ use std::fmt::Debug;
 pub struct CommittedWitness<E: MultiMillerLoop> {
     f: E::G1Affine,
     m: E::G1Affine,
-    table_id: StaticTableId<String>,
+    table_ids: Vec<StaticTableId<String>>,
 }
 
 pub struct CommittedLogDerivative<E: MultiMillerLoop> {
@@ -52,10 +52,12 @@ impl<F: FieldExt> Argument<F> {
         let f = transcript.read_point()?;
         let m = transcript.read_point()?;
 
+        // TODO: CHECK THAT ALL TABLES ARE OF SAME SIZE
+
         Ok(CommittedWitness {
             f,
             m,
-            table_id: self.table_id.clone(),
+            table_ids: self.table_ids.clone(),
         })
     }
 }
@@ -118,11 +120,20 @@ where
         params: &ParamsKZG<E>,
         pairing_batcher: &mut PairingBatcher<E>,
         beta: ChallengeBeta<E::G1Affine>,
+        theta: ChallengeTheta<E::G1Affine>,
     ) -> Result<(), Error> {
-        let table = vk
-            .static_table_mapping
-            .get(&self.committed.committed_witness.table_id)
-            .expect("Key does not exists");
+        // TODO: make nicer error
+        let tables: Vec<_> = self
+            .committed
+            .committed_witness
+            .table_ids
+            .iter()
+            .map(|table_id| {
+                vk.static_table_mapping
+                    .get(table_id)
+                    .expect("Key not exists")
+            })
+            .collect();
 
         // Check that A encodes the correct values:
         // e(a, [T(x)]_2) = e(q_a, [Z_V(x)]_2) * e(m - ß * a, [1]_2)
@@ -137,15 +148,26 @@ where
         let a_at_zero_cm: E::G1Affine =
             (<E as Engine>::G1Affine::generator() * self.a_at_zero).into();
 
+        let compress_tables = || {
+            tables.iter().fold(E::G2Affine::identity(), |acc, table| {
+                let acc = acc * *theta + table.t;
+
+                // TODO: do this in projective
+                acc.into()
+            })
+        };
+
+        let table_t = compress_tables();
+
         pairing_batcher.add_pairing(&[
             // e(a, [T(x)]_2)
-            (self.committed.a, table.t),
+            (self.committed.a, table_t),
             // e(-q_a, [Z_V(x)]_2)
-            ((-self.committed.qa).into(), table.zv),
+            ((-self.committed.qa).into(), tables[0].zv),
             // e(- (m - ß * a), [1]_2)
             ((-m_minus_beta_a).into(), params.g2()),
             // e(b_0, [x_b0_bound]_2)
-            (self.committed.b0, table.x_b0_bound),
+            (self.committed.b0, tables[0].x_b0_bound), //TODO: MAKE THIS SHARED
             // e(-p, [1]_2)
             ((-self.committed.p).into(), params.g2()),
             // e(a - [a0], [1]_2)
@@ -167,12 +189,19 @@ where
     ) -> impl Iterator<Item = E::Scalar> + 'a {
         let active_rows = E::Scalar::one() - (l_last + l_blind);
 
-        let table = vk
-            .static_table_mapping
-            .get(&self.committed.committed_witness.table_id)
-            .expect("Key does not exists");
+        let tables: Vec<_> = self
+            .committed
+            .committed_witness
+            .table_ids
+            .iter()
+            .map(|table_id| {
+                vk.static_table_mapping
+                    .get(&table_id)
+                    .expect("Key does not exists")
+            })
+            .collect();
 
-        let table_size = E::Scalar::from(table.size as u64);
+        let table_size = E::Scalar::from(tables[0].size as u64);
 
         let blinding_factors = vk.cs.blinding_factors();
         let unusable_rows = E::Scalar::from((blinding_factors + 1) as u64);

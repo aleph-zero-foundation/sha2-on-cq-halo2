@@ -479,7 +479,9 @@ where
             // Hash each lookup permuted commitment
             static_lookups
                 .iter()
-                .map(|lookup| lookup.register_pairings(&vk, params, &mut pairing_batcher, beta))
+                .map(|lookup| {
+                    lookup.register_pairings(&vk, params, &mut pairing_batcher, beta, theta)
+                })
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;

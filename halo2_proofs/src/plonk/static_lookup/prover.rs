@@ -31,7 +31,7 @@ use super::StaticTableId;
 pub struct Committed<E: MultiMillerLoop> {
     pub(in crate::plonk) f: Polynomial<E::Scalar, LagrangeCoeff>,
     pub(in crate::plonk) m_sparse: BTreeMap<usize, E::Scalar>,
-    pub(in crate::plonk) table_id: StaticTableId<String>,
+    pub(in crate::plonk) table_ids: Vec<StaticTableId<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,18 +67,27 @@ impl<F: FieldExt> super::Argument<F> {
         T: TranscriptWrite<E::G1Affine, EC>,
     {
         // TODO: make nicer error
-        let table = pk
-            .static_table_mapping
-            .get(&self.table_id)
-            .expect("Key not exists");
+        let tables: Vec<_> = self
+            .table_ids
+            .iter()
+            .map(|table_id| {
+                pk.static_table_mapping
+                    .get(table_id)
+                    .expect("Key not exists")
+            })
+            .collect();
+
+        if !tables.iter().all(|&table| table.size == tables[0].size) {
+            panic!("Tables should all be of the same size");
+        }
 
         let table_config = pk
             .static_table_configs
-            .get(&table.size)
+            .get(&tables[0].size)
             .expect("Config does not exists");
 
-        let compress_expressions = |expressions: &[Expression<E::Scalar>]| {
-            let compressed_expression = expressions
+        let evaluate_expressions = |expressions: &[Expression<E::Scalar>]| {
+            expressions
                 .iter()
                 .map(|expression| {
                     pk.vk.domain.lagrange_from_vec(evaluate(
@@ -91,29 +100,54 @@ impl<F: FieldExt> super::Argument<F> {
                         challenges,
                     ))
                 })
-                .fold(domain.empty_lagrange(), |acc, expression| {
-                    acc * *theta + &expression
-                });
-            compressed_expression
+                .collect::<Vec<_>>()
         };
 
-        // Get values of input expressions involved in the lookup and compress them
-        // for now we just have one expression here
-        let f = compress_expressions(&[self.input.clone()]);
+        // Closure to get values of expressions and compress them
+        let compress_expressions =
+            |evaluated_expressions: &[Polynomial<E::Scalar, LagrangeCoeff>]| {
+                let compressed_expression = evaluated_expressions
+                    .iter()
+                    .fold(domain.empty_lagrange(), |acc, expression| {
+                        acc * *theta + &expression
+                    });
+                compressed_expression
+            };
+
+        // Get values of input expressions involved in the lookup
+        let evaluated_expressions = evaluate_expressions(&self.input);
+        let f = compress_expressions(&evaluated_expressions);
 
         // NOTE: For completeness we just ignore blinding rows
         // make sure to add selector and change cq as in our hackmd for soundness
         let blinding_factors = pk.vk.cs.blinding_factors();
         let usable_rows = params.n() as usize - (blinding_factors + 1);
         let mut m_sparse = BTreeMap::<usize, E::Scalar>::default();
-        for fi in f.iter().take(usable_rows) {
-            let index = table
-                .value_index_mapping
-                .get(fi)
-                .expect(&format!("{:?} not in table", *fi));
 
-            let multiplicity = m_sparse.entry(*index).or_insert(E::Scalar::zero());
-            *multiplicity += E::Scalar::one();
+        for row in 0..usable_rows {
+            let mut idx: Option<usize> = None;
+            for (evals, table) in evaluated_expressions.iter().zip(tables.iter()) {
+                let fi = evals.get(row).unwrap();
+                let index: &usize = table
+                    .value_index_mapping
+                    .get(fi)
+                    .expect(&format!("{:?} not in table", *fi));
+
+                if let Some(prev_index) = idx {
+                    if prev_index != *index {
+                        panic!("Vector lookup must be on the same table row")
+                    }
+                } else {
+                    idx = Some(*index);
+                }
+            }
+
+            if let Some(index) = idx {
+                let multiplicity = m_sparse.entry(index).or_insert(E::Scalar::zero());
+                *multiplicity += E::Scalar::one();
+            } else {
+                panic!("Lookup failed")
+            }
         }
 
         // zk is not currently supported
@@ -133,7 +167,7 @@ impl<F: FieldExt> super::Argument<F> {
         Ok(Committed {
             f,
             m_sparse,
-            table_id: self.table_id.clone(),
+            table_ids: self.table_ids.clone(),
         })
     }
 }
@@ -145,6 +179,7 @@ impl<E: MultiMillerLoop> Committed<E> {
         params: &ParamsKZG<E>,
         domain: &EvaluationDomain<E::Scalar>,
         beta: ChallengeBeta<E::G1Affine>,
+        theta: ChallengeTheta<E::G1Affine>,
         transcript: &mut T,
     ) -> Result<CommittedLogDerivative<E>, Error>
     where
@@ -155,27 +190,55 @@ impl<E: MultiMillerLoop> Committed<E> {
         T: TranscriptWrite<E::G1Affine, EC>,
     {
         // TODO: make nicer error
-        let table = pk
-            .static_table_mapping
-            .get(&self.table_id)
-            .expect("Key not exists");
+        let tables: Vec<_> = self
+            .table_ids
+            .iter()
+            .map(|table_id| {
+                pk.static_table_mapping
+                    .get(table_id)
+                    .expect("Key not exists")
+            })
+            .collect();
 
+        // We already checked that they are all of the same size
         let table_config = pk
             .static_table_configs
-            .get(&table.size)
+            .get(&tables[0].size)
             .expect("Config does not exists");
 
         let mut a_cm = E::G1::identity();
         let mut qa_cm = E::G1::identity();
         let mut a0_cm = E::G1::identity();
 
-        let table_values: Vec<E::Scalar> = table.value_index_mapping.keys().cloned().collect();
+        let compress_tables = |index: usize| {
+            tables.iter().fold(
+                (E::Scalar::zero(), E::G1Affine::identity()),
+                |acc, table| {
+                    let (values, qs) = acc;
+
+                    let values = values * *theta + table.values[index];
+                    let qs = qs * *theta + table.qs[index];
+
+                    // TODO: do this in projectiv
+                    (values, qs.into())
+                },
+            )
+        };
+
+        let f_set: std::collections::BTreeSet<E::Scalar> = self.f.iter().cloned().collect();
+
         // step 2&3&4: computes A sparse representation, a commitment and qa commitment in single pass
         for (&index, &multiplicity) in self.m_sparse.iter() {
-            let a_i = multiplicity * (table_values[index] + *beta).invert().unwrap();
+            let (table_values, table_qs) = compress_tables(index);
+            let a_i = multiplicity * (table_values + *beta).invert().unwrap();
 
+            // sanity
+            assert!(f_set.get(&table_values).is_some());
+
+            // a_cm = table_g1_lagrange * a_i + a_cm;
             a_cm = table_config.g1_lagrange[index] * a_i + a_cm;
-            qa_cm = table.qs[index] * a_i + qa_cm;
+            qa_cm = table_qs * a_i + qa_cm;
+            // a0_cm = table_lagrange_0 * a_i + a0_cm;
             a0_cm = table_config.g_lagrange_opening_at_0[index] * a_i + a0_cm;
         }
 
@@ -240,7 +303,7 @@ impl<E: MultiMillerLoop> Committed<E> {
         //      A(0) = n * B(0) / N
         let b_at_zero = eval_polynomial(&b_poly, E::Scalar::zero());
         let a_at_zero = {
-            let n_table_inv = E::Scalar::from(table.size as u64).invert().unwrap();
+            let n_table_inv = E::Scalar::from(table_config.size as u64).invert().unwrap();
             let n = E::Scalar::from(n as u64);
             let blinding_factors = E::Scalar::from(blinding_factors as u64);
             (b_at_zero * n - (blinding_factors + E::Scalar::one()) * beta_inv) * n_table_inv

@@ -70,6 +70,7 @@ pub struct StaticTableValues<E: MultiMillerLoop> {
     size: usize,
     /// Mapping from value to its index in the table
     value_index_mapping: BTreeMap<E::Scalar, usize>,
+    values: Vec<E::Scalar>,
     // lagrange commitments will exist in params
     // quotient commitments
     qs: Vec<E::G1>,
@@ -122,6 +123,7 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
         Self {
             size,
             value_index_mapping,
+            values: values.to_vec(),
             qs,
         }
     }
@@ -168,34 +170,25 @@ pub struct StaticCommittedTable<E: MultiMillerLoop> {
 
 #[derive(Debug, Clone)]
 pub struct Argument<F: Field> {
-    input: Expression<F>,
-    table_id: StaticTableId<String>,
+    input: Vec<Expression<F>>,
+    table_ids: Vec<StaticTableId<String>>,
 }
 
 impl<F: Field> Argument<F> {
-    pub fn new(name: &'static str, input: Expression<F>, table_id: StaticTableId<String>) -> Self {
-        Self { input, table_id }
+    pub fn new(name: &'static str, table_map: Vec<(Expression<F>, StaticTableId<String>)>) -> Self {
+        let (input, table_ids) = table_map.into_iter().unzip();
+
+        Self { input, table_ids }
     }
 
     pub(crate) fn required_degree(&self) -> usize {
         /*
             B(X)(q(X) * f(X) - \beta) - 1
         */
-        std::cmp::max(3, 2 + self.input.degree())
+        let mut input_degree = 1;
+        for expr in self.input.iter() {
+            input_degree = std::cmp::max(input_degree, expr.degree());
+        }
+        std::cmp::max(3, 2 + input_degree)
     }
 }
-
-// #[test]
-// fn test_table() {
-//     use halo2curves::bn256::{Bn256, Fr};
-//     const N: u32 = 8;
-//     let params = ParamsKZG::<Bn256>::setup(N - 1, N, OsRng);
-
-//     let table = StaticTableValues::<Bn256> {
-//         size: 8,
-//         value_index_mapping: (0..N).map(|i| (Fr::random(OsRng), i as usize)).collect(),
-//         qs: vec![],
-//     };
-
-//     let _ = table.commit(params.g.len(), &params.g2_srs, 4);
-// }

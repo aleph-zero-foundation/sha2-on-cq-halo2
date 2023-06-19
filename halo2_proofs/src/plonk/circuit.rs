@@ -1579,18 +1579,24 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn lookup_static(
         &mut self,
         name: &'static str,
-        table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> (Expression<F>, StaticTableId<String>),
+        table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, StaticTableId<String>)>,
     ) -> usize {
         let mut cells = VirtualCells::new(self);
-        let (input, table_id) = table_map(&mut cells);
-        if input.contains_simple_selector() {
-            panic!("expression containing simple selector supplied to lookup argument");
-        }
+        let table_map = table_map(&mut cells)
+            .into_iter()
+            .map(|(input, table)| {
+                if input.contains_simple_selector() {
+                    panic!("expression containing simple selector supplied to lookup argument");
+                }
+
+                (input, table)
+            })
+            .collect();
 
         let index = self.static_lookups.len();
 
         self.static_lookups
-            .push(static_lookup::Argument::new(name, input, table_id));
+            .push(static_lookup::Argument::new(name, table_map));
 
         index
     }

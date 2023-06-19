@@ -275,7 +275,7 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
 
         meta.lookup_static("lookup_bits", |meta| {
             (
-                meta.query_advice(advice[0], Rotation::cur()),
+                meta.query_advice(vec![advice[0]], Rotation::cur()),
                 StaticTableId(String::from("bits_table")),
             )
         });
