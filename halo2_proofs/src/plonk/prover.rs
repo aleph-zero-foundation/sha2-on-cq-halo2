@@ -625,6 +625,7 @@ where
         *gamma,
         *theta,
         &lookups,
+        &static_lookups,
         &permutations,
     );
 

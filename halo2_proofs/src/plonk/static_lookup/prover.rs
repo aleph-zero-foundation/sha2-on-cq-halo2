@@ -36,6 +36,7 @@ pub struct Committed<E: MultiMillerLoop> {
 
 #[derive(Debug, Clone)]
 pub struct CommittedLogDerivative<E: MultiMillerLoop> {
+    pub(in crate::plonk) b: Polynomial<E::Scalar, Coeff>,
     pub(in crate::plonk) b0: Polynomial<E::Scalar, Coeff>,
     pub(in crate::plonk) f: Polynomial<E::Scalar, Coeff>,
     pub(in crate::plonk) a_at_zero: E::Scalar,
@@ -101,16 +102,13 @@ impl<F: FieldExt> super::Argument<F> {
         let usable_rows = params.n() as usize - (blinding_factors + 1);
         let mut m_sparse = BTreeMap::<usize, E::Scalar>::default();
         for fi in f.iter().take(usable_rows) {
-            println!("fi: {:?}", fi);
             let index = table
                 .value_index_mapping
                 .get(fi)
                 .expect(&format!("{:?} not in table", *fi));
 
-            println!("index: {}", index);
             let multiplicity = m_sparse.entry(*index).or_insert(E::Scalar::zero());
             *multiplicity += E::Scalar::one();
-            println!("multiplicity: {:?}", multiplicity);
         }
 
         // zk is not currently supported
@@ -184,7 +182,8 @@ impl<E: MultiMillerLoop> Committed<E> {
             .map(|&fi| (fi + *beta).invert().unwrap())
             .collect();
 
-        bs.extend_from_slice(&vec![E::Scalar::zero(); blinding_factors + 1]);
+        let beta_inv = beta.invert().unwrap();
+        bs.extend_from_slice(&vec![beta_inv; blinding_factors + 1]);
 
         EvaluationDomain::ifft(
             bs.as_mut_slice(),
@@ -194,7 +193,7 @@ impl<E: MultiMillerLoop> Committed<E> {
         );
 
         // (b - b(0)) / X
-        let mut b0_poly_coeffs = bs[1..].to_vec();
+        let mut b0_poly_coeffs: Vec<<E as Engine>::Scalar> = bs[1..].to_vec();
 
         // TODO: QB part will be handled with full quotient argument and multiopen
 
@@ -206,7 +205,22 @@ impl<E: MultiMillerLoop> Committed<E> {
 
         // convert to correct poly types
         let b_poly = domain.coeff_from_vec(bs);
-        // let p_poly = table_domain.coeff_from_vec(p_poly_coeffs);
+
+        // sanity
+        {
+            let mut selector = vec![E::Scalar::one(); usable_rows];
+            selector.extend_from_slice(&vec![E::Scalar::zero(); n - usable_rows]);
+            assert_eq!(selector.len(), n);
+            let root = domain.get_omega();
+            for i in 0..n {
+                assert_eq!(
+                    E::Scalar::zero(),
+                    eval_polynomial(&b_poly, root.pow(&[i as u64, 0, 0, 0]))
+                        * (selector[i] * self.f[i] + *beta)
+                        - E::Scalar::one()
+                )
+            }
+        }
 
         // TODO append 0 here to fix issue
         b0_poly_coeffs.push(E::Scalar::zero());
@@ -232,7 +246,8 @@ impl<E: MultiMillerLoop> Committed<E> {
         let a_at_zero = {
             let n_table_inv = E::Scalar::from(table.size as u64).invert().unwrap();
             let n = E::Scalar::from(n as u64);
-            b_at_zero * n * n_table_inv
+            let blinding_factors = E::Scalar::from(blinding_factors as u64);
+            (b_at_zero * n - (blinding_factors + E::Scalar::one()) * beta_inv) * n_table_inv
         };
 
         let mut f = self.f.to_vec();
@@ -246,6 +261,7 @@ impl<E: MultiMillerLoop> Committed<E> {
         let f = domain.coeff_from_vec(f);
 
         Ok(CommittedLogDerivative {
+            b: b_poly,
             b0: b0_poly,
             f,
             a_at_zero,

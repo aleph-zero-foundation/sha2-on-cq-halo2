@@ -1,7 +1,9 @@
 use crate::multicore;
 use crate::plonk::lookup::prover::Committed;
 use crate::plonk::permutation::Argument;
-use crate::plonk::{lookup, permutation, AdviceQuery, Any, FixedQuery, InstanceQuery, ProvingKey};
+use crate::plonk::{
+    lookup, permutation, static_lookup, AdviceQuery, Any, FixedQuery, InstanceQuery, ProvingKey,
+};
 use crate::poly::Basis;
 use crate::{
     arithmetic::{eval_polynomial, parallelize, CurveAffine, FieldExt},
@@ -291,6 +293,7 @@ impl<C: CurveAffine> Evaluator<C> {
         gamma: C::ScalarExt,
         theta: C::ScalarExt,
         lookups: &[Vec<lookup::prover::Committed<C>>],
+        static_lookups: &[Vec<static_lookup::prover::CommittedLogDerivative<E>>],
         permutations: &[permutation::prover::Committed<C>],
     ) -> Polynomial<C::ScalarExt, ExtendedLagrangeCoeff>
     where
@@ -334,10 +337,11 @@ impl<C: CurveAffine> Evaluator<C> {
 
         // Core expression evaluations
         let num_threads = multicore::current_num_threads();
-        for (((advice, instance), lookups), permutation) in advice
+        for ((((advice, instance), lookups), static_lookups), permutation) in advice
             .iter()
             .zip(instance.iter())
             .zip(lookups.iter())
+            .zip(static_lookups.iter())
             .zip(permutations.iter())
         {
             // Custom gates
@@ -522,6 +526,23 @@ impl<C: CurveAffine> Evaluator<C> {
                             + (a_minus_s
                                 * (permuted_input_coset[idx] - permuted_input_coset[r_prev])
                                 * l_active_row[idx]);
+                    }
+                });
+            }
+
+            // Static lookups
+            for lookup in static_lookups.iter() {
+                let b_coset = pk.vk.domain.coeff_to_extended(lookup.b.clone());
+                let f_coset = pk.vk.domain.coeff_to_extended(lookup.f.clone());
+
+                // Lookup constraints
+                parallelize(&mut values, |values, start| {
+                    for (i, value) in values.iter_mut().enumerate() {
+                        let idx = start + i;
+
+                        *value = *value * y
+                            + (b_coset[idx] * (f_coset[idx] * l_active_row[idx] + beta)
+                                - E::Scalar::one());
                     }
                 });
             }

@@ -132,6 +132,7 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
             zv: zv.into(),
             t: t.into(),
             x_b0_bound: srs_g2[b0_bound_index],
+            size: srs_g1_len,
         }
     }
 }
@@ -141,6 +142,7 @@ pub struct StaticCommittedTable<E: MultiMillerLoop> {
     pub zv: E::G2Affine,
     pub t: E::G2Affine,
     pub x_b0_bound: E::G2Affine,
+    pub size: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -155,7 +157,10 @@ impl<F: Field> Argument<F> {
     }
 
     pub(crate) fn required_degree(&self) -> usize {
-        std::cmp::max(2, self.input.degree())
+        /*
+            B(X)(q(X) * f(X) - \beta) - 1
+        */
+        std::cmp::max(3, 2 + self.input.degree())
     }
 }
 

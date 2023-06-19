@@ -1986,7 +1986,7 @@ impl<F: Field> ConstraintSystem<F> {
                 .unwrap_or(1),
         );
 
-        // The lookup argument also serves alongside the gates and must be accounted
+        // The static lookup argument also serves alongside the gates and must be accounted
         // for.
         degree = std::cmp::max(
             degree,

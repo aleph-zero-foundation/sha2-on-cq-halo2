@@ -159,76 +159,36 @@ where
 
     pub(in crate::plonk) fn expressions<'a>(
         &'a self,
-        l_0: E::Scalar,
+        vk: &'a VerifyingKey<E>,
         l_last: E::Scalar,
         l_blind: E::Scalar,
-        argument: &'a Argument<E::Scalar>,
-        theta: ChallengeTheta<E::G1Affine>,
         beta: ChallengeBeta<E::G1Affine>,
-        gamma: ChallengeGamma<E::G1Affine>,
-        advice_evals: &[E::Scalar],
-        fixed_evals: &[E::Scalar],
-        instance_evals: &[E::Scalar],
-        challenges: &[E::Scalar],
+        x: ChallengeX<E::G1Affine>,
     ) -> impl Iterator<Item = E::Scalar> + 'a {
-        // add all the custom pairings
+        let active_rows = E::Scalar::one() - (l_last + l_blind);
 
-        // let active_rows = E::Scalar::one() - (l_last + l_blind);
+        let table = vk
+            .static_table_mapping
+            .get(&self.committed.committed_witness.table_id)
+            .expect("Key does not exists");
 
-        // let product_expression = || {
-        //     let compress_expressions = |expressions: &[Expression<E::Scalar>]| {
-        //         expressions
-        //             .iter()
-        //             .map(|expression| {
-        //                 expression.evaluate(
-        //                     &|scalar| scalar,
-        //                     &|_| panic!("virtual selectors are removed during optimization"),
-        //                     &|query| fixed_evals[query.index],
-        //                     &|query| advice_evals[query.index],
-        //                     &|query| instance_evals[query.index],
-        //                     &|challenge| challenges[challenge.index()],
-        //                     &|a| -a,
-        //                     &|a, b| a + &b,
-        //                     &|a, b| a * &b,
-        //                     &|a, scalar| a * &scalar,
-        //                 )
-        //             })
-        //             .fold(E::Scalar::zero(), |acc, eval| acc * &*theta + &eval)
-        //     };
-        //     let right = self.product_eval
-        //         * &(compress_expressions(&argument.input_expressions) + &*beta)
-        //         * &(compress_expressions(&argument.table_expressions) + &*gamma);
+        let table_size = E::Scalar::from(table.size as u64);
 
-        //     (left - &right) * &active_rows
-        // };
+        let blinding_factors = vk.cs.blinding_factors();
+        let unusable_rows = E::Scalar::from((blinding_factors + 1) as u64);
 
-        // std::iter::empty()
-        //     .chain(
-        //         // l_0(X) * (1 - z'(X)) = 0
-        //         Some(l_0 * &(E::Scalar::one() - &self.product_eval)),
-        //     )
-        //     .chain(
-        //         // l_last(X) * (z(X)^2 - z(X)) = 0
-        //         Some(l_last * &(self.product_eval.square() - &self.product_eval)),
-        //     )
-        //     .chain(
-        //         // (1 - (l_last(X) + l_blind(X))) * (
-        //         //   z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-        //         //   - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta) (\theta^{m-1} s_0(X) + ... + s_{m-1}(X) + \gamma)
-        //         // ) = 0
-        //         Some(product_expression()),
-        //     )
-        //     .chain(Some(
-        //         // l_0(X) * (a'(X) - s'(X)) = 0
-        //         l_0 * &(self.permuted_input_eval - &self.permuted_table_eval),
-        //     ))
-        //     .chain(Some(
-        //         // (1 - (l_last(X) + l_blind(X))) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) = 0
-        //         (self.permuted_input_eval - &self.permuted_table_eval)
-        //             * &(self.permuted_input_eval - &self.permuted_input_inv_eval)
-        //             * &active_rows,
-        //     ))
-        iter::empty()
+        let b_at_zero = {
+            let beta_inv = beta.invert().unwrap();
+            let circuit_domain_inv = E::Scalar::from(vk.get_domain().n).invert().unwrap();
+            (table_size * self.a_at_zero + unusable_rows * beta_inv) * circuit_domain_inv
+        };
+
+        let b_eval = self.b0_eval * *x + b_at_zero;
+
+        std::iter::empty().chain(Some(
+            // b(l_active * f + beta) - 1 = 0
+            b_eval * (active_rows * self.f_eval + *beta) - E::Scalar::one(),
+        ))
     }
 
     pub(in crate::plonk) fn queries<'r, M: MSM<E::G1Affine> + 'r>(
