@@ -32,6 +32,7 @@ pub struct Committed<E: MultiMillerLoop> {
     pub(in crate::plonk) f: Polynomial<E::Scalar, LagrangeCoeff>,
     pub(in crate::plonk) m_sparse: BTreeMap<usize, E::Scalar>,
     pub(in crate::plonk) table_ids: Vec<StaticTableId<String>>,
+    pub(in crate::plonk) table_index_value_mappings: Vec<BTreeMap<usize, E::Scalar>>,
 }
 
 #[derive(Debug, Clone)]
@@ -124,14 +125,23 @@ impl<F: FieldExt> super::Argument<F> {
         let usable_rows = params.n() as usize - (blinding_factors + 1);
         let mut m_sparse = BTreeMap::<usize, E::Scalar>::default();
 
+        let mut table_index_value_mappings: Vec<_> = (0..tables.len())
+            .map(|_| BTreeMap::<usize, E::Scalar>::default())
+            .collect();
+
         for row in 0..usable_rows {
             let mut idx: Option<usize> = None;
-            for (evals, table) in evaluated_expressions.iter().zip(tables.iter()) {
+            for (table_idx, (evals, table)) in
+                evaluated_expressions.iter().zip(tables.iter()).enumerate()
+            {
                 let fi = evals.get(row).unwrap();
                 let index: &usize = table
                     .value_index_mapping
                     .get(fi)
                     .expect(&format!("{:?} not in table", *fi));
+
+                // append in new map
+                table_index_value_mappings[table_idx].insert(*index, *fi);
 
                 if let Some(prev_index) = idx {
                     if prev_index != *index {
@@ -168,6 +178,7 @@ impl<F: FieldExt> super::Argument<F> {
             f,
             m_sparse,
             table_ids: self.table_ids.clone(),
+            table_index_value_mappings,
         })
     }
 }
@@ -211,12 +222,15 @@ impl<E: MultiMillerLoop> Committed<E> {
         let mut a0_cm = E::G1::identity();
 
         let compress_tables = |index: usize| {
-            tables.iter().fold(
+            tables.iter().enumerate().fold(
                 (E::Scalar::zero(), E::G1Affine::identity()),
-                |acc, table| {
+                |acc, (table_idx, &table)| {
                     let (values, qs) = acc;
 
-                    let values = values * *theta + table.values[index];
+                    let values = values * *theta
+                        + self.table_index_value_mappings[table_idx]
+                            .get(&index)
+                            .unwrap();
                     let qs = qs * *theta + table.qs[index];
 
                     // TODO: do this in projectiv

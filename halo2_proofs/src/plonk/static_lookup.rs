@@ -68,10 +68,8 @@ impl<E: MultiMillerLoop> StaticTableConfig<E> {
 #[derive(Clone, Debug)]
 pub struct StaticTableValues<E: MultiMillerLoop> {
     size: usize,
-    /// Mapping from value to its index in the table
+    // Mapping from value to its index in the table
     value_index_mapping: BTreeMap<E::Scalar, usize>,
-    values: Vec<E::Scalar>,
-    // lagrange commitments will exist in params
     // quotient commitments
     qs: Vec<E::G1>,
 }
@@ -123,7 +121,6 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
         Self {
             size,
             value_index_mapping,
-            values: values.to_vec(),
             qs,
         }
     }
