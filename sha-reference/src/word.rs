@@ -29,7 +29,9 @@ pub type Limb<const L: usize> = Word<L>;
 
 impl<const L: usize> Word<L> {
     pub fn zero() -> Self {
-        Self { bits: [Bit::Zero; L] }
+        Self {
+            bits: [Bit::Zero; L],
+        }
     }
 
     pub fn right_rotation(&self, n: usize) -> Self {
