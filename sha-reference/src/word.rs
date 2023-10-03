@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use std::ops::{Add, BitXor};
+use std::ops::{Add, BitXor, Index, IndexMut};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Default)]
 pub enum Bit {
@@ -35,7 +35,7 @@ impl<const L: usize> Word<L> {
     pub fn right_rotation(&self, n: usize) -> Self {
         let mut result = Self::zero();
         for i in 0..L {
-            result.bits[i] = self.bits[(i + L - n) % L];
+            result[i] = self[(i + L - n) % L];
         }
         result
     }
@@ -52,7 +52,7 @@ impl<const L: usize> Word<L> {
 pub fn majority<const L: usize>(a: &Word<L>, b: &Word<L>, c: &Word<L>) -> Word<L> {
     let mut result = Word::zero();
     for i in 0..L {
-        result.bits[i] = match (a.bits[i], b.bits[i], c.bits[i]) {
+        result[i] = match (a[i], b[i], c[i]) {
             (Bit::Zero, Bit::Zero, Bit::Zero)
             | (Bit::Zero, Bit::Zero, Bit::One)
             | (Bit::Zero, Bit::One, Bit::Zero)
@@ -66,8 +66,8 @@ pub fn majority<const L: usize>(a: &Word<L>, b: &Word<L>, c: &Word<L>) -> Word<L
 pub fn choose<const L: usize>(a: &Word<L>, b: &Word<L>, c: &Word<L>) -> Word<L> {
     let mut result = Word::zero();
     for i in 0..L {
-        let (r#if, then, r#else) = (a.bits[i], b.bits[i], c.bits[i]);
-        result.bits[i] = if r#if == Bit::One { then } else { r#else };
+        let (r#if, then, r#else) = (a[i], b[i], c[i]);
+        result[i] = if r#if == Bit::One { then } else { r#else };
     }
     result
 }
@@ -78,7 +78,7 @@ impl<const L: usize> BitXor for Word<L> {
     fn bitxor(self, rhs: Self) -> Self::Output {
         let mut result = Self::zero();
         for i in 0..L {
-            result.bits[i] = match (self.bits[i], rhs.bits[i]) {
+            result[i] = match (self[i], rhs[i]) {
                 (Bit::Zero, Bit::Zero) | (Bit::One, Bit::One) => Bit::Zero,
                 (Bit::One, Bit::Zero) | (Bit::Zero, Bit::One) => Bit::One,
             };
@@ -93,8 +93,22 @@ impl<const L: usize> Add for Word<L> {
     fn add(self, rhs: Self) -> Self::Output {
         let mut result = Self::zero();
         for i in 0..L {
-            result.bits[i] = self.bits[i] + rhs.bits[i];
+            result[i] = self[i] + rhs[i];
         }
         result
+    }
+}
+
+impl<const L: usize> Index<usize> for Word<L> {
+    type Output = Bit;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.bits[index]
+    }
+}
+
+impl<const L: usize> IndexMut<usize> for Word<L> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.bits[index]
     }
 }
