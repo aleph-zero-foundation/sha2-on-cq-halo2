@@ -6,6 +6,10 @@ members = [
     "primitives/poseidon"
 ]
 
+exclude = [
+    "sha-reference",
+]
+
 [profile.dev]
 opt-level = 3
 
