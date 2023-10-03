@@ -34,7 +34,7 @@ impl<const L: usize> Word<L> {
         }
     }
 
-    pub fn right_rotation(&self, n: usize) -> Self {
+    fn right_rotation(&self, n: usize) -> Self {
         let mut result = Self::zero();
         for i in 0..L {
             result[i] = self[(i + n * L - n) % L];
