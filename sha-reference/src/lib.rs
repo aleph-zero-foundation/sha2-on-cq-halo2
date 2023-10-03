@@ -31,3 +31,13 @@ pub fn sha_round<const L: usize>(input: Octet<L>) -> Octet<L> {
 
     output
 }
+
+pub fn sha<const L: usize>(input: Octet<L>) -> Octet<L> {
+    let mut output = input;
+
+    for _ in 0..64 {
+        output = sha_round(output);
+    }
+
+    output
+}
