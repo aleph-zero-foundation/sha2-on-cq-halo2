@@ -37,7 +37,7 @@ impl<const L: usize> Word<L> {
     pub fn right_rotation(&self, n: usize) -> Self {
         let mut result = Self::zero();
         for i in 0..L {
-            result[i] = self[(i + L - n) % L];
+            result[i] = self[(i + n * L - n) % L];
         }
         result
     }
@@ -48,6 +48,12 @@ impl<const L: usize> Word<L> {
 
     pub fn rot_1(&self) -> Self {
         self.right_rotation(6) ^ self.right_rotation(11) ^ self.right_rotation(25)
+    }
+}
+
+impl<const L: usize> From<[Bit; L]> for Word<L> {
+    fn from(bits: [Bit; L]) -> Self {
+        Self { bits }
     }
 }
 
