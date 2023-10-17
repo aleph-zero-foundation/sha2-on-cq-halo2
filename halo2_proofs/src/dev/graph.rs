@@ -109,7 +109,7 @@ impl<E: MultiMillerLoop> Assignment<E::Scalar> for Graph<E> {
         // Do nothing; we don't care about regions in this context.
     }
 
-    fn register_static_table(&mut self, id: StaticTableId<String>, static_table: StaticTable<Self::E>) {}
+    fn register_static_table(&mut self, _id: StaticTableId<String>, _static_table: StaticTable<Self::E>) {}
 
     fn enable_selector<A, AR>(&mut self, _: A, _: &Selector, _: usize) -> Result<(), Error>
     where
@@ -124,12 +124,12 @@ impl<E: MultiMillerLoop> Assignment<E::Scalar> for Graph<E> {
         Ok(Value::unknown())
     }
 
-    fn assign_advice<'r, 'v>(&'r mut self, column: Column<Advice>, row: usize, to: Value<Assigned<E::Scalar>>) -> Result<Value<&'v Assigned<E::Scalar>>, Error> {
+    fn assign_advice<'r, 'v>(&'r mut self, _column: Column<Advice>, _row: usize, _to: Value<Assigned<E::Scalar>>) -> Result<Value<&'v Assigned<E::Scalar>>, Error> {
         Ok(Value::unknown())
     }
 
 
-    fn assign_fixed(&mut self, column: Column<Fixed>, row: usize, to: Assigned<E::Scalar>) {
+    fn assign_fixed(&mut self, _column: Column<Fixed>, _row: usize, _to: Assigned<E::Scalar>) {
     }
 
 

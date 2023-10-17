@@ -7,8 +7,8 @@ mod simple_circuit;
 
 fn main() {
     let circuit: SimpleCircuit<Bn256> = SimpleCircuit {
-        a: Value::known(1.into()),
-        b: Value::known(2.into()),
+        a: Value::unknown(),
+        b: Value::unknown(),
         _marker: Default::default(),
     };
 
@@ -20,14 +20,7 @@ fn main() {
 
     halo2_proofs::dev::CircuitLayout::default()
         .show_labels(true)
-        .mark_equality_cells(true)
         .show_equality_constraints(true)
-        .render(5, &circuit, &root)
+        .render(4, &circuit, &root)
         .unwrap();
-
-
-
-    // Generate the DOT graph string.
-    let dot_string = halo2_proofs::dev::circuit_dot_graph(&circuit);
-    print!("{}", dot_string);
 }

@@ -348,7 +348,7 @@ impl<E: MultiMillerLoop> CommittedLogDerivative<E> {
         T: TranscriptWrite<E::G1Affine, EC>,
     >(
         self,
-        pk: &ProvingKey<E>,
+        _pk: &ProvingKey<E>,
         x: ChallengeX<E::G1Affine>,
         transcript: &mut T,
     ) -> Result<Evaluated<E>, Error>

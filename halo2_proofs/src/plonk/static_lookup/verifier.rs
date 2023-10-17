@@ -222,7 +222,7 @@ where
 
     pub(in crate::plonk) fn queries<'r, M: MSM<E::G1Affine> + 'r>(
         &'r self,
-        vk: &'r VerifyingKey<E>,
+        _vk: &'r VerifyingKey<E>,
         x: ChallengeX<E::G1Affine>,
     ) -> impl Iterator<Item = VerifierQuery<'r, E::G1Affine, M>> + Clone {
         iter::empty()

@@ -532,7 +532,7 @@ where
         self
     }
 
-    fn new<R: RngCore>(k: u32, rng: &mut R) -> Self {
+    fn new<R: RngCore>(_k: u32, _rng: &mut R) -> Self {
         unreachable!()
     }
 

@@ -136,13 +136,17 @@ impl CircuitLayout {
         // instance columns, and blue for fixed columns (with a darker blue for selectors).
         let root =
             drawing_area.apply_coord_spec(Cartesian2d::<RangedCoordusize, RangedCoordusize>::new(
-                view_width,
-                view_height,
+                view_width.clone(),
+                view_height.clone(),
                 drawing_area.get_pixel_range(),
             ));
         root.draw(&Rectangle::new(
             [(0, 0), (total_columns, view_bottom)],
             ShapeStyle::from(&WHITE).filled(),
+        ))?;
+        root.draw(&PathElement::new(
+            [(cs.num_instance_columns, 0), (cs.num_instance_columns, view_bottom)],
+            ShapeStyle::from(&BLACK).stroke_width(5),
         ))?;
         root.draw(&Rectangle::new(
             [
@@ -151,6 +155,10 @@ impl CircuitLayout {
             ],
             ShapeStyle::from(&RED.mix(0.2)).filled(),
         ))?;
+        root.draw(&PathElement::new(
+            [(cs.num_instance_columns + cs.num_advice_columns, 0), (cs.num_instance_columns + cs.num_advice_columns, view_bottom)],
+            ShapeStyle::from(&BLACK).stroke_width(5),
+        ))?;
         root.draw(&Rectangle::new(
             [
                 (cs.num_instance_columns + cs.num_advice_columns, 0),
@@ -158,20 +166,22 @@ impl CircuitLayout {
             ],
             ShapeStyle::from(&BLUE.mix(0.2)).filled(),
         ))?;
-        {
-            root.draw(&Rectangle::new(
-                [
-                    (
-                        cs.num_instance_columns
-                            + cs.num_advice_columns
-                            + non_selector_fixed_columns,
-                        0,
-                    ),
-                    (total_columns, view_bottom),
-                ],
-                ShapeStyle::from(&BLUE.mix(0.1)).filled(),
-            ))?;
-        }
+        root.draw(&PathElement::new(
+            [(cs.num_instance_columns + cs.num_advice_columns + non_selector_fixed_columns, 0), (cs.num_instance_columns + cs.num_advice_columns + non_selector_fixed_columns, view_bottom)],
+            ShapeStyle::from(&BLACK).stroke_width(5),
+        ))?;
+        root.draw(&Rectangle::new(
+            [
+                (
+                    cs.num_instance_columns
+                        + cs.num_advice_columns
+                        + non_selector_fixed_columns,
+                    0,
+                ),
+                (total_columns, view_bottom),
+            ],
+            ShapeStyle::from(&BLUE.mix(0.1)).filled(),
+        ))?;
 
         // Mark the unusable rows of the circuit.
         let usable_rows = n - (cs.blinding_factors() + 1);
@@ -194,13 +204,9 @@ impl CircuitLayout {
             ))?;
             root.draw(&Rectangle::new(
                 [top_left, bottom_right],
-                ShapeStyle::from(&RED.mix(0.2)).filled(),
-            ))?;
-            root.draw(&Rectangle::new(
-                [top_left, bottom_right],
                 ShapeStyle::from(&GREEN.mix(0.2)).filled(),
             ))?;
-            root.draw(&Rectangle::new([top_left, bottom_right], &BLACK))?;
+            root.draw(&Rectangle::new([top_left, bottom_right], ShapeStyle::from(&GREEN).stroke_width(2)))?;
             Ok(())
         };
 
@@ -283,9 +289,14 @@ impl CircuitLayout {
             for (l_col, l_row, r_col, r_row) in &layout.equality {
                 let l_col = column_index(&cs, (*l_col).into());
                 let r_col = column_index(&cs, (*r_col).into());
+
+                if l_col == r_col && l_row == r_row {
+                    continue;
+                }
+
                 root.draw(&PathElement::new(
                     [(l_col, *l_row), (r_col, *r_row)],
-                    ShapeStyle::from(&RED),
+                    ShapeStyle::from(&RED).stroke_width(3),
                 ))?;
             }
         }
@@ -293,8 +304,28 @@ impl CircuitLayout {
         // Add a line showing the total used rows.
         root.draw(&PathElement::new(
             [(0, layout.total_rows), (total_columns, layout.total_rows)],
-            ShapeStyle::from(&BLACK),
+            ShapeStyle::from(&BLACK).stroke_width(5),
         ))?;
+        // Add a line showing the total usable rows.
+        root.draw(&PathElement::new(
+            [(0, usable_rows), (total_columns, usable_rows)],
+            ShapeStyle::from(&BLACK).stroke_width(5),
+        ))?;
+
+        for i in view_width.clone() {
+            if i == view_width.end {
+                continue
+            }
+            for j in view_height.clone() {
+                if j == view_height.end {
+                    continue
+                }
+                root.draw(&Rectangle::new(
+                    [(i, j), (i+1, j+1)],
+                    ShapeStyle::from(&BLACK),
+                ))?;
+            }
+        }
 
         // Render labels last, on top of everything else.
         if let Some(labels) = labels {
@@ -426,7 +457,7 @@ impl<E: MultiMillerLoop> Assignment<E::Scalar> for Layout<E> {
         self.current_region = None;
     }
 
-    fn register_static_table(&mut self, id: StaticTableId<String>, static_table: StaticTable<Self::E>) {
+    fn register_static_table(&mut self, _id: StaticTableId<String>, _static_table: StaticTable<Self::E>) {
     }
 
     fn enable_selector<A, AR>(&mut self, _: A, selector: &Selector, row: usize) -> Result<(), Error>
@@ -448,12 +479,12 @@ impl<E: MultiMillerLoop> Assignment<E::Scalar> for Layout<E> {
         Ok(Value::unknown())
     }
 
-    fn assign_advice<'r, 'v>(&'r mut self, column: Column<Advice>, row: usize, to: Value<Assigned<E::Scalar>>) -> Result<Value<&'v Assigned<E::Scalar>>, Error> {
+    fn assign_advice<'r, 'v>(&'r mut self, column: Column<Advice>, row: usize, _to: Value<Assigned<E::Scalar>>) -> Result<Value<&'v Assigned<E::Scalar>>, Error> {
         self.update(Column::<Any>::from(column).into(), row);
         Ok(Value::unknown())
     }
 
-    fn assign_fixed(&mut self, column: Column<Fixed>, row: usize, to: Assigned<E::Scalar>) {
+    fn assign_fixed(&mut self, column: Column<Fixed>, row: usize, _to: Assigned<E::Scalar>) {
         self.update(Column::<Any>::from(column).into(), row);
     }
 
