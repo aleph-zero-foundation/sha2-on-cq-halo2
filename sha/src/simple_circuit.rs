@@ -29,6 +29,16 @@ pub struct SimpleCircuit<E: MultiMillerLoop> {
     pub _marker: PhantomData<E>,
 }
 
+impl<E: MultiMillerLoop> SimpleCircuit<E> {
+    pub fn new(a: u64, b: u64) -> Self {
+        Self {
+            a: Value::known(E::Scalar::from(a)),
+            b: Value::known(E::Scalar::from(b)),
+            _marker: PhantomData::default(),
+        }
+    }
+}
+
 impl<E: MultiMillerLoop> Default for SimpleCircuit<E> {
     fn default() -> Self {
         Self {
@@ -68,7 +78,11 @@ impl<E: MultiMillerLoop> Circuit<E> for SimpleCircuit<E> {
             vec![s.clone() * (a - b_prime), s * (b - a_prime)]
         });
 
-        FieldConfig { advice, instance, selector }
+        FieldConfig {
+            advice,
+            instance,
+            selector,
+        }
     }
 
     fn synthesize(
@@ -91,5 +105,35 @@ impl<E: MultiMillerLoop> Circuit<E> for SimpleCircuit<E> {
         layouter.constrain_instance(*a.cell(), config.instance, 1);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::simple_circuit::SimpleCircuit;
+    use halo2_proofs::dev::MockProver;
+    use halo2_proofs::halo2curves::bn256::{Bn256, Fr};
+
+    #[test]
+    fn test_positive_case() {
+        MockProver::run(
+            4,
+            &SimpleCircuit::<Bn256>::new(1, 2),
+            vec![vec![Fr::from(2), Fr::from(1)]],
+        )
+        .expect("proving should not fail")
+        .assert_satisfied();
+    }
+
+    #[test]
+    fn test_incorrect_input() {
+        MockProver::run(
+            4,
+            &SimpleCircuit::<Bn256>::new(1, 2),
+            vec![vec![Fr::from(1), Fr::from(2)]],
+        )
+        .expect("proving should not fail")
+        .verify()
+        .unwrap_err();
     }
 }
