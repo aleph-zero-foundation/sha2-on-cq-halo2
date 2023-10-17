@@ -1,3 +1,15 @@
+//! Simple circuit example:
+//!     - 2 private inputs (advices): a, b
+//!     - 2 public inputs (instances): a', b'
+//!
+//! Represented relation:
+//!     - a = b'
+//!     - b = a'
+//!
+//! For this, it is enough to have just two columns (one for advices, one for instances). That way
+//! we will need 2 rows. A cost for that is a need for a selector, which will be used to trigger
+//! 'cross-equality' gate only once.
+
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
 use halo2_proofs::plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector};
