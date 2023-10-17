@@ -1,5 +1,7 @@
+use std::marker::PhantomData;
 use ff::Field;
 use tabbycat::{AttrList, Edge, GraphBuilder, GraphType, Identity, StmtList};
+use halo2curves::pairing::MultiMillerLoop;
 
 use crate::{
     circuit::Value,
@@ -8,6 +10,7 @@ use crate::{
         Fixed, FloorPlanner, Instance, Selector,
     },
 };
+use crate::plonk::static_lookup::{StaticTable, StaticTableId};
 
 pub mod layout;
 
@@ -17,7 +20,7 @@ pub mod layout;
 /// inside the gadgets and chips that it uses.
 ///
 /// [`Layouter::namespace`]: crate::circuit::Layouter#method.namespace
-pub fn circuit_dot_graph<F: Field, ConcreteCircuit: Circuit<F>>(
+pub fn circuit_dot_graph<E: MultiMillerLoop, ConcreteCircuit: Circuit<E>>(
     circuit: &ConcreteCircuit,
 ) -> String {
     // Collect the graph details.
@@ -65,8 +68,7 @@ pub fn circuit_dot_graph<F: Field, ConcreteCircuit: Circuit<F>>(
         .to_string()
 }
 
-#[derive(Default)]
-struct Graph {
+struct Graph<E> {
     /// Graph nodes in the namespace, structured as `(name, gadget_name)`.
     nodes: Vec<(String, Option<String>)>,
 
@@ -75,9 +77,26 @@ struct Graph {
 
     /// The current namespace, as indices into `nodes`.
     current_namespace: Vec<usize>,
+
+    _phantom: std::marker::PhantomData<E>,
 }
 
-impl<F: Field> Assignment<F> for Graph {
+impl<E> Default for Graph<E> {
+    fn default() -> Self {
+        Self {
+            nodes: vec![],
+            edges: vec![],
+            current_namespace: vec![],
+            _phantom: PhantomData::default(),
+        }
+    }
+}
+
+impl<E: MultiMillerLoop> Assignment<E::Scalar> for Graph<E> {
+    type E = E;
+
+
+
     fn enter_region<NR, N>(&mut self, _: N)
     where
         NR: Into<String>,
@@ -90,6 +109,8 @@ impl<F: Field> Assignment<F> for Graph {
         // Do nothing; we don't care about regions in this context.
     }
 
+    fn register_static_table(&mut self, _id: StaticTableId<String>, _static_table: StaticTable<Self::E>) {}
+
     fn enable_selector<A, AR>(&mut self, _: A, _: &Selector, _: usize) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
@@ -99,43 +120,18 @@ impl<F: Field> Assignment<F> for Graph {
         Ok(())
     }
 
-    fn query_instance(&self, _: Column<Instance>, _: usize) -> Result<Value<F>, Error> {
+    fn query_instance(&self, _: Column<Instance>, _: usize) -> Result<Value<E::Scalar>, Error> {
         Ok(Value::unknown())
     }
 
-    fn assign_advice<V, VR, A, AR>(
-        &mut self,
-        _: A,
-        _: Column<Advice>,
-        _: usize,
-        _: V,
-    ) -> Result<(), Error>
-    where
-        V: FnOnce() -> Value<VR>,
-        VR: Into<Assigned<F>>,
-        A: FnOnce() -> AR,
-        AR: Into<String>,
-    {
-        // Do nothing; we don't care about cells in this context.
-        Ok(())
+    fn assign_advice<'r, 'v>(&'r mut self, _column: Column<Advice>, _row: usize, _to: Value<Assigned<E::Scalar>>) -> Result<Value<&'v Assigned<E::Scalar>>, Error> {
+        Ok(Value::unknown())
     }
 
-    fn assign_fixed<V, VR, A, AR>(
-        &mut self,
-        _: A,
-        _: Column<Fixed>,
-        _: usize,
-        _: V,
-    ) -> Result<(), Error>
-    where
-        V: FnOnce() -> Value<VR>,
-        VR: Into<Assigned<F>>,
-        A: FnOnce() -> AR,
-        AR: Into<String>,
-    {
-        // Do nothing; we don't care about cells in this context.
-        Ok(())
+
+    fn assign_fixed(&mut self, _column: Column<Fixed>, _row: usize, _to: Assigned<E::Scalar>) {
     }
+
 
     fn copy(
         &mut self,
@@ -143,21 +139,18 @@ impl<F: Field> Assignment<F> for Graph {
         _: usize,
         _: Column<Any>,
         _: usize,
-    ) -> Result<(), crate::plonk::Error> {
-        // Do nothing; we don't care about permutations in this context.
-        Ok(())
-    }
+    ) {}
 
     fn fill_from_row(
         &mut self,
         _: Column<Fixed>,
         _: usize,
-        _: Value<Assigned<F>>,
+        _: Value<Assigned<E::Scalar>>,
     ) -> Result<(), Error> {
         Ok(())
     }
 
-    fn get_challenge(&self, _: Challenge) -> Value<F> {
+    fn get_challenge(&self, _: Challenge) -> Value<E::Scalar> {
         Value::unknown()
     }
 

@@ -1,10 +1,9 @@
-use crate::{serde::SerdeObject, CurveAffine, FieldExt, Group as _Group};
+use crate::{ CurveAffine, FieldExt, Group as _Group};
 use core::ops::Mul;
 use group::{
     prime::PrimeCurve, Group, GroupOps, GroupOpsOwned, ScalarMul, ScalarMulOwned,
     UncompressedEncoding,
 };
-use std::fmt::Debug;
 
 pub trait Engine: Sized + 'static + Clone {
     /// This is the scalar field of the engine's groups.

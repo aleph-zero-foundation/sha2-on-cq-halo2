@@ -172,7 +172,7 @@ pub struct Argument<F: Field> {
 }
 
 impl<F: Field> Argument<F> {
-    pub fn new(name: &'static str, table_map: Vec<(Expression<F>, StaticTableId<String>)>) -> Self {
+    pub fn new(_name: &'static str, table_map: Vec<(Expression<F>, StaticTableId<String>)>) -> Self {
         let (input, table_ids) = table_map.into_iter().unzip();
 
         Self { input, table_ids }

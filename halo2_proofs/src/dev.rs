@@ -344,8 +344,8 @@ impl<F: Field + Group, E: MultiMillerLoop<Scalar = F>> Assignment<F> for MockPro
 
     fn register_static_table(
         &mut self,
-        id: StaticTableId<String>,
-        static_table: StaticTable<Self::E>,
+        _id: StaticTableId<String>,
+        _static_table: StaticTable<Self::E>,
     ) {
         // if ctx = prover then check that prover part is some and take it else panic
         // if ctx = verifier then check that verifier part is some and take it else panic

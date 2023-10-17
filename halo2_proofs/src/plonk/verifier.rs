@@ -386,7 +386,7 @@ where
         .zip(lookups_evaluated.iter())
         .zip(static_lookups.iter())
         .flat_map(
-            |((
+            |(
                 (
                     (
                         (
@@ -398,7 +398,7 @@ where
                     lookups,
                 ),
                 static_lookups,
-            ))| {
+            )| {
                 iter::empty()
                     .chain(
                         V::QUERY_INSTANCE

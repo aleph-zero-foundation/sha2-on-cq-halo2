@@ -5,7 +5,9 @@ use plotters::{
 };
 use std::cmp;
 use std::collections::HashSet;
+use std::marker::PhantomData;
 use std::ops::Range;
+use halo2curves::pairing::MultiMillerLoop;
 
 use crate::{
     circuit::{layouter::RegionColumn, Value},
@@ -14,6 +16,7 @@ use crate::{
         Fixed, FloorPlanner, Instance, Selector,
     },
 };
+use crate::plonk::static_lookup::{StaticTable, StaticTableId};
 
 /// Graphical renderer for circuit layouts.
 ///
@@ -85,7 +88,7 @@ impl CircuitLayout {
     }
 
     /// Renders the given circuit on the given drawing area.
-    pub fn render<F: Field, ConcreteCircuit: Circuit<F>, DB: DrawingBackend>(
+    pub fn render<E: MultiMillerLoop, ConcreteCircuit: Circuit<E>, DB: DrawingBackend>(
         self,
         k: u32,
         circuit: &ConcreteCircuit,
@@ -112,7 +115,7 @@ impl CircuitLayout {
         // Figure out what order to render the columns in.
         // TODO: For now, just render them in the order they were configured.
         let total_columns = cs.num_instance_columns + cs.num_advice_columns + cs.num_fixed_columns;
-        let column_index = |cs: &ConstraintSystem<F>, column: RegionColumn| {
+        let column_index = |cs: &ConstraintSystem<E::Scalar>, column: RegionColumn| {
             let column: Column<Any> = match column {
                 RegionColumn::Column(col) => col,
                 RegionColumn::Selector(selector) => cs.selector_map[selector.0].into(),
@@ -133,13 +136,17 @@ impl CircuitLayout {
         // instance columns, and blue for fixed columns (with a darker blue for selectors).
         let root =
             drawing_area.apply_coord_spec(Cartesian2d::<RangedCoordusize, RangedCoordusize>::new(
-                view_width,
-                view_height,
+                view_width.clone(),
+                view_height.clone(),
                 drawing_area.get_pixel_range(),
             ));
         root.draw(&Rectangle::new(
             [(0, 0), (total_columns, view_bottom)],
             ShapeStyle::from(&WHITE).filled(),
+        ))?;
+        root.draw(&PathElement::new(
+            [(cs.num_instance_columns, 0), (cs.num_instance_columns, view_bottom)],
+            ShapeStyle::from(&BLACK).stroke_width(5),
         ))?;
         root.draw(&Rectangle::new(
             [
@@ -148,6 +155,10 @@ impl CircuitLayout {
             ],
             ShapeStyle::from(&RED.mix(0.2)).filled(),
         ))?;
+        root.draw(&PathElement::new(
+            [(cs.num_instance_columns + cs.num_advice_columns, 0), (cs.num_instance_columns + cs.num_advice_columns, view_bottom)],
+            ShapeStyle::from(&BLACK).stroke_width(5),
+        ))?;
         root.draw(&Rectangle::new(
             [
                 (cs.num_instance_columns + cs.num_advice_columns, 0),
@@ -155,20 +166,22 @@ impl CircuitLayout {
             ],
             ShapeStyle::from(&BLUE.mix(0.2)).filled(),
         ))?;
-        {
-            root.draw(&Rectangle::new(
-                [
-                    (
-                        cs.num_instance_columns
-                            + cs.num_advice_columns
-                            + non_selector_fixed_columns,
-                        0,
-                    ),
-                    (total_columns, view_bottom),
-                ],
-                ShapeStyle::from(&BLUE.mix(0.1)).filled(),
-            ))?;
-        }
+        root.draw(&PathElement::new(
+            [(cs.num_instance_columns + cs.num_advice_columns + non_selector_fixed_columns, 0), (cs.num_instance_columns + cs.num_advice_columns + non_selector_fixed_columns, view_bottom)],
+            ShapeStyle::from(&BLACK).stroke_width(5),
+        ))?;
+        root.draw(&Rectangle::new(
+            [
+                (
+                    cs.num_instance_columns
+                        + cs.num_advice_columns
+                        + non_selector_fixed_columns,
+                    0,
+                ),
+                (total_columns, view_bottom),
+            ],
+            ShapeStyle::from(&BLUE.mix(0.1)).filled(),
+        ))?;
 
         // Mark the unusable rows of the circuit.
         let usable_rows = n - (cs.blinding_factors() + 1);
@@ -191,13 +204,9 @@ impl CircuitLayout {
             ))?;
             root.draw(&Rectangle::new(
                 [top_left, bottom_right],
-                ShapeStyle::from(&RED.mix(0.2)).filled(),
-            ))?;
-            root.draw(&Rectangle::new(
-                [top_left, bottom_right],
                 ShapeStyle::from(&GREEN.mix(0.2)).filled(),
             ))?;
-            root.draw(&Rectangle::new([top_left, bottom_right], &BLACK))?;
+            root.draw(&Rectangle::new([top_left, bottom_right], ShapeStyle::from(&GREEN).stroke_width(2)))?;
             Ok(())
         };
 
@@ -280,9 +289,14 @@ impl CircuitLayout {
             for (l_col, l_row, r_col, r_row) in &layout.equality {
                 let l_col = column_index(&cs, (*l_col).into());
                 let r_col = column_index(&cs, (*r_col).into());
+
+                if l_col == r_col && l_row == r_row {
+                    continue;
+                }
+
                 root.draw(&PathElement::new(
                     [(l_col, *l_row), (r_col, *r_row)],
-                    ShapeStyle::from(&RED),
+                    ShapeStyle::from(&RED).stroke_width(3),
                 ))?;
             }
         }
@@ -290,8 +304,28 @@ impl CircuitLayout {
         // Add a line showing the total used rows.
         root.draw(&PathElement::new(
             [(0, layout.total_rows), (total_columns, layout.total_rows)],
-            ShapeStyle::from(&BLACK),
+            ShapeStyle::from(&BLACK).stroke_width(5),
         ))?;
+        // Add a line showing the total usable rows.
+        root.draw(&PathElement::new(
+            [(0, usable_rows), (total_columns, usable_rows)],
+            ShapeStyle::from(&BLACK).stroke_width(5),
+        ))?;
+
+        for i in view_width.clone() {
+            if i == view_width.end {
+                continue
+            }
+            for j in view_height.clone() {
+                if j == view_height.end {
+                    continue
+                }
+                root.draw(&Rectangle::new(
+                    [(i, j), (i+1, j+1)],
+                    ShapeStyle::from(&BLACK),
+                ))?;
+            }
+        }
 
         // Render labels last, on top of everything else.
         if let Some(labels) = labels {
@@ -338,7 +372,7 @@ struct Region {
 }
 
 #[derive(Default)]
-struct Layout {
+struct Layout<E> {
     k: u32,
     regions: Vec<Region>,
     current_region: Option<usize>,
@@ -350,9 +384,10 @@ struct Layout {
     equality: Vec<(Column<Any>, usize, Column<Any>, usize)>,
     /// Selector assignments used for optimization pass
     selectors: Vec<Vec<bool>>,
+    _phantom: PhantomData<E>
 }
 
-impl Layout {
+impl<E> Layout<E> {
     fn new(k: u32, n: usize, num_selectors: usize) -> Self {
         Layout {
             k,
@@ -366,6 +401,7 @@ impl Layout {
             equality: vec![],
             /// Selector assignments used for optimization pass
             selectors: vec![vec![false; n]; num_selectors],
+            _phantom: PhantomData::default(),
         }
     }
 
@@ -395,7 +431,11 @@ impl Layout {
     }
 }
 
-impl<F: Field> Assignment<F> for Layout {
+impl<E: MultiMillerLoop> Assignment<E::Scalar> for Layout<E> {
+    type E = E;
+
+
+
     fn enter_region<NR, N>(&mut self, name_fn: N)
     where
         NR: Into<String>,
@@ -417,6 +457,9 @@ impl<F: Field> Assignment<F> for Layout {
         self.current_region = None;
     }
 
+    fn register_static_table(&mut self, _id: StaticTableId<String>, _static_table: StaticTable<Self::E>) {
+    }
+
     fn enable_selector<A, AR>(&mut self, _: A, selector: &Selector, row: usize) -> Result<(), Error>
     where
         A: FnOnce() -> AR,
@@ -432,43 +475,19 @@ impl<F: Field> Assignment<F> for Layout {
         Ok(())
     }
 
-    fn query_instance(&self, _: Column<Instance>, _: usize) -> Result<Value<F>, Error> {
+    fn query_instance(&self, _: Column<Instance>, _: usize) -> Result<Value<E::Scalar>, Error> {
         Ok(Value::unknown())
     }
 
-    fn assign_advice<V, VR, A, AR>(
-        &mut self,
-        _: A,
-        column: Column<Advice>,
-        row: usize,
-        _: V,
-    ) -> Result<(), Error>
-    where
-        V: FnOnce() -> Value<VR>,
-        VR: Into<Assigned<F>>,
-        A: FnOnce() -> AR,
-        AR: Into<String>,
-    {
+    fn assign_advice<'r, 'v>(&'r mut self, column: Column<Advice>, row: usize, _to: Value<Assigned<E::Scalar>>) -> Result<Value<&'v Assigned<E::Scalar>>, Error> {
         self.update(Column::<Any>::from(column).into(), row);
-        Ok(())
+        Ok(Value::unknown())
     }
 
-    fn assign_fixed<V, VR, A, AR>(
-        &mut self,
-        _: A,
-        column: Column<Fixed>,
-        row: usize,
-        _: V,
-    ) -> Result<(), Error>
-    where
-        V: FnOnce() -> Value<VR>,
-        VR: Into<Assigned<F>>,
-        A: FnOnce() -> AR,
-        AR: Into<String>,
-    {
+    fn assign_fixed(&mut self, column: Column<Fixed>, row: usize, _to: Assigned<E::Scalar>) {
         self.update(Column::<Any>::from(column).into(), row);
-        Ok(())
     }
+
 
     fn copy(
         &mut self,
@@ -476,21 +495,20 @@ impl<F: Field> Assignment<F> for Layout {
         l_row: usize,
         r_col: Column<Any>,
         r_row: usize,
-    ) -> Result<(), crate::plonk::Error> {
+    ) {
         self.equality.push((l_col, l_row, r_col, r_row));
-        Ok(())
     }
 
     fn fill_from_row(
         &mut self,
         _: Column<Fixed>,
         _: usize,
-        _: Value<Assigned<F>>,
+        _: Value<Assigned<E::Scalar>>,
     ) -> Result<(), Error> {
         Ok(())
     }
 
-    fn get_challenge(&self, _: Challenge) -> Value<F> {
+    fn get_challenge(&self, _: Challenge) -> Value<E::Scalar> {
         Value::unknown()
     }
 
