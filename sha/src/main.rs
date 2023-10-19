@@ -5,6 +5,7 @@ use halo2_proofs::plonk::Circuit;
 use crate::simple_circuit::SimpleCircuit;
 
 mod simple_circuit;
+mod tables;
 
 fn draw_circuit<E: MultiMillerLoop, C: Circuit<E>>(c: &C, k: u32) {
     let root = BitMapBackend::new("simple_circuit.png", (1024, 768)).into_drawing_area();
