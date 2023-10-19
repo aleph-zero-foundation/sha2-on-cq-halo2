@@ -132,10 +132,31 @@ pub fn create_ch_table<L: Limbs>() -> Table {
     })
 }
 
+pub fn create_decomposition_table<L: Limbs, const K: u8>() -> Table {
+    let mut table = vec![];
+    for a in 0u64..(1 << K) {
+        let a_mod = a % (1 << (L::full_word_len()));
+        let x = a_mod >> (L::SECOND_LIMB_LEN + L::SECOND_LIMB_LEN);
+
+        let mut y = a_mod >> L::SECOND_LIMB_LEN;
+        for i in 0..L::FIRST_LIMB_LEN {
+            y &= !(1 << (i + L::SECOND_LIMB_LEN));
+        }
+
+        let mut z = a_mod;
+        for i in 0..(L::FIRST_LIMB_LEN + L::SECOND_LIMB_LEN) {
+            z &= !(1 << (i + L::SECOND_LIMB_LEN));
+        }
+
+        table.push((a, x, y, z));
+    }
+    table
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::tables::{create_rot0_table, create_rot1_table};
     use crate::tables::limbs::Limbs;
+    use crate::tables::{create_ch_table, create_decomposition_table, create_maj_table, create_rot0_table, create_rot1_table};
 
     struct TestLimbs;
     impl Limbs for TestLimbs {
@@ -164,7 +185,7 @@ mod tests {
 
     #[test]
     fn maj_works() {
-        let table = crate::tables::create_maj_table::<TestLimbs>();
+        let table = create_maj_table::<TestLimbs>();
         assert_eq!(table.len(), 256);
         assert!(table.contains(&(0, 0, 0, 0)));
         assert!(table.contains(&(0b0000_1100, 0b000000_01, 0b000000_00, 0b0000_0000)));
@@ -173,10 +194,19 @@ mod tests {
 
     #[test]
     fn ch_works() {
-        let table = crate::tables::create_ch_table::<TestLimbs>();
+        let table = create_ch_table::<TestLimbs>();
         assert_eq!(table.len(), 256);
         assert!(table.contains(&(0, 0, 0, 0)));
         assert!(table.contains(&(0b0000_1100, 0b000000_01, 0b000000_00, 0b0000_0000)));
         assert!(table.contains(&(0b0000_1010, 0b000000_01, 0b000000_10, 0b0000_0000)));
+    }
+
+    #[test]
+    fn decomposition_works(){
+        let table = create_decomposition_table::<TestLimbs, 10>();
+        assert_eq!(table.len(), 1024);
+        assert!(table.contains(&(0, 0, 0, 0)));
+        assert!(table.contains(&(0b10_1010_1010, 0b0000_1010, 0b000000_10, 0b000000_10)));
+        assert!(table.contains(&(0b11_1011_0110, 0b0000_1011, 0b000000_01, 0b000000_10)));
     }
 }
