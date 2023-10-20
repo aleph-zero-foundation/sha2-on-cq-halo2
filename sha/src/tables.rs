@@ -1,5 +1,5 @@
-use crate::tables::limbs::{Bits, Limbs};
-
+use crate::tables::limbs::Bits;
+pub use limbs::{Limbs, ShortLimbs, LongLimbs};
 type Table = Vec<(u64, u64, u64, u64)>;
 
 mod limbs {
@@ -156,7 +156,10 @@ pub fn create_decomposition_table<L: Limbs, const K: u8>() -> Table {
 #[cfg(test)]
 mod tests {
     use crate::tables::limbs::Limbs;
-    use crate::tables::{create_ch_table, create_decomposition_table, create_maj_table, create_rot0_table, create_rot1_table};
+    use crate::tables::{
+        create_ch_table, create_decomposition_table, create_maj_table, create_rot0_table,
+        create_rot1_table,
+    };
 
     struct TestLimbs;
     impl Limbs for TestLimbs {
@@ -202,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn decomposition_works(){
+    fn decomposition_works() {
         let table = create_decomposition_table::<TestLimbs, 10>();
         assert_eq!(table.len(), 1024);
         assert!(table.contains(&(0, 0, 0, 0)));
