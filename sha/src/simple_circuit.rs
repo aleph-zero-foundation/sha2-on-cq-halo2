@@ -17,7 +17,7 @@ use halo2_proofs::poly::Rotation;
 use std::marker::PhantomData;
 
 #[derive(Clone, Debug)]
-pub struct FieldConfig {
+pub struct Config {
     advice: Column<Advice>,
     instance: Column<Instance>,
     selector: Selector,
@@ -50,7 +50,7 @@ impl<E: MultiMillerLoop> Default for SimpleCircuit<E> {
 }
 
 impl<E: MultiMillerLoop> Circuit<E> for SimpleCircuit<E> {
-    type Config = FieldConfig;
+    type Config = Config;
     type FloorPlanner = SimpleFloorPlanner<E>;
 
     fn without_witnesses(&self) -> Self {
@@ -78,7 +78,7 @@ impl<E: MultiMillerLoop> Circuit<E> for SimpleCircuit<E> {
             vec![s.clone() * (a - b_prime), s * (b - a_prime)]
         });
 
-        FieldConfig {
+        Config {
             advice,
             instance,
             selector,
