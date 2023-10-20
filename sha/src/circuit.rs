@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 pub struct ShaConfig {
     advice: [Column<Advice>; 4],
     instance: Column<Instance>,
-    selector: [Selector; 3],
+    selector: [Selector; 2],
 }
 
 pub struct ShaCircuit<E: MultiMillerLoop> {
@@ -79,39 +79,11 @@ impl<E: MultiMillerLoop> Circuit<E> for ShaCircuit<E> {
 
         let instance = meta.instance_column();
 
-        let selector = (0..3).map(|_| meta.selector()).collect::<Vec<_>>();
+        let selector = (0..2).map(|_| meta.selector()).collect::<Vec<_>>();
 
         // =============
         // GATE CREATION
         // =============
-        meta.create_gate("simply copy 6 inputs", |vc| {
-            let a = vc.query_advice(advices[0], Rotation::cur());
-            let b = vc.query_advice(advices[1], Rotation::cur());
-            let c = vc.query_advice(advices[2], Rotation::cur());
-
-            let e = vc.query_advice(advices[0], Rotation::next());
-            let f = vc.query_advice(advices[1], Rotation::next());
-            let g = vc.query_advice(advices[2], Rotation::next());
-
-            let b_prime = vc.query_advice(advices[0], Rotation(2));
-            let c_prime = vc.query_advice(advices[1], Rotation(2));
-            let d_prime = vc.query_advice(advices[2], Rotation(2));
-
-            let f_prime = vc.query_advice(advices[0], Rotation(3));
-            let g_prime = vc.query_advice(advices[1], Rotation(3));
-            let h_prime = vc.query_advice(advices[2], Rotation(3));
-
-            let selector = vc.query_selector(selector[0]);
-
-            [
-                selector.clone() * (a - b_prime),
-                selector.clone() * (b - c_prime),
-                selector.clone() * (c - d_prime),
-                selector.clone() * (e - f_prime),
-                selector.clone() * (f - g_prime),
-                selector * (g - h_prime),
-            ]
-        });
 
         ShaConfig {
             advice: advices.try_into().unwrap(),
@@ -123,8 +95,36 @@ impl<E: MultiMillerLoop> Circuit<E> for ShaCircuit<E> {
     fn synthesize(
         &self,
         config: Self::Config,
-        layouter: impl Layouter<E::Scalar, E = E>,
+        mut layouter: impl Layouter<E::Scalar, E = E>,
     ) -> Result<(), Error> {
-        todo!()
+        // ==========================================================================
+        // Assign inputs (a..h) and copy 6 of them right away to the instance column.
+        // ==========================================================================
+        let (b_prime, c_prime, d_prime, f_prime, g_prime, h_prime) = layouter.assign_region(
+            || "assign inputs",
+            |mut region| {
+                let a = region.assign_advice(config.advice[0], 0, self.a)?;
+                let b = region.assign_advice(config.advice[1], 0, self.b)?;
+                let c = region.assign_advice(config.advice[2], 0, self.c)?;
+                let _d = region.assign_advice(config.advice[3], 0, self.d)?;
+
+                let e = region.assign_advice(config.advice[0], 1, self.e)?;
+                let f = region.assign_advice(config.advice[1], 1, self.f)?;
+                let g = region.assign_advice(config.advice[2], 1, self.g)?;
+                let _h = region.assign_advice(config.advice[3], 1, self.h)?;
+
+                Ok((a, b, c, e, f, g))
+            },
+        )?;
+
+        layouter.constrain_instance(*b_prime.cell(), config.instance, 1);
+        layouter.constrain_instance(*c_prime.cell(), config.instance, 2);
+        layouter.constrain_instance(*d_prime.cell(), config.instance, 3);
+
+        layouter.constrain_instance(*f_prime.cell(), config.instance, 5);
+        layouter.constrain_instance(*g_prime.cell(), config.instance, 6);
+        layouter.constrain_instance(*h_prime.cell(), config.instance, 7);
+
+        Ok(())
     }
 }
