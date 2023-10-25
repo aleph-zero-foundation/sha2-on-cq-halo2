@@ -23,11 +23,14 @@ fn draw_circuit<E: MultiMillerLoop, C: Circuit<E>>(c: &C, k: u32, filename: &str
         .unwrap();
 }
 
-fn main() {
+fn draw_circuits() {
     draw_circuit(&SimpleCircuit::<Bn256>::default(), 4, "simple_circuit");
     draw_circuit(
         &ShaCircuit::<Bn256, ShortLimbs>::default(),
         5,
         "sha_circuit",
     );
+}
+fn main() {
+    draw_circuits();
 }
