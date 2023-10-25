@@ -1,11 +1,12 @@
+mod config;
+
+use crate::circuit::config::ShaConfig;
 use crate::tables::Limbs;
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
 use halo2_proofs::plonk::static_lookup::{StaticTable, StaticTableId};
-use halo2_proofs::plonk::{
-    Advice, Circuit, Column, ConstraintSystem, Error, Fixed, Instance, Selector,
-};
+use halo2_proofs::plonk::{Circuit, ConstraintSystem, Error};
 use halo2_proofs::poly::Rotation;
 use std::marker::PhantomData;
 
@@ -100,14 +101,6 @@ impl<E: MultiMillerLoop, L> Default for ShaCircuit<E, L> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ShaConfig {
-    advices: [Column<Advice>; 4],
-    instance: Column<Instance>,
-    selectors: [Selector; 4],
-    fixed: [Column<Fixed>; 2],
-}
-
 impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
     type Config = ShaConfig;
     type FloorPlanner = SimpleFloorPlanner<E>;
@@ -120,16 +113,7 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // ================
         // COLUMNS CREATION
         // ================
-        let advices = (0..4)
-            .map(|_| {
-                let column = meta.advice_column();
-                meta.enable_equality(column);
-                column
-            })
-            .collect::<Vec<_>>();
-        let instance = meta.instance_column();
-        let selectors = (0..4).map(|_| meta.selector()).collect::<Vec<_>>();
-        let fixed = (0..2).map(|_| meta.fixed_column()).collect::<Vec<_>>();
+        let config = ShaConfig::new::<E>(meta);
 
         // ===============
         // TABLES CREATION
@@ -137,19 +121,19 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         meta.lookup_static("majority", |meta| {
             vec![
                 (
-                    meta.query_advice(advices[0], Rotation::cur()),
+                    meta.query_advice(config.advices[0], Rotation::cur()),
                     StaticTableId("x".into()),
                 ),
                 (
-                    meta.query_advice(advices[1], Rotation::cur()),
+                    meta.query_advice(config.advices[1], Rotation::cur()),
                     StaticTableId("y".into()),
                 ),
                 (
-                    meta.query_advice(advices[2], Rotation::cur()),
+                    meta.query_advice(config.advices[2], Rotation::cur()),
                     StaticTableId("z".into()),
                 ),
                 (
-                    meta.query_advice(advices[3], Rotation::cur()),
+                    meta.query_advice(config.advices[3], Rotation::cur()),
                     StaticTableId("maj".into()),
                 ),
             ]
@@ -159,25 +143,20 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // GATE CREATION
         // =============
         meta.create_gate("simple decomposition", |meta| {
-            let word = meta.query_advice(advices[0], Rotation::cur());
-            let x = meta.query_advice(advices[1], Rotation::cur());
-            let y = meta.query_advice(advices[2], Rotation::cur());
-            let z = meta.query_advice(advices[3], Rotation::cur());
+            let word = meta.query_advice(config.advices[0], Rotation::cur());
+            let x = meta.query_advice(config.advices[1], Rotation::cur());
+            let y = meta.query_advice(config.advices[2], Rotation::cur());
+            let z = meta.query_advice(config.advices[3], Rotation::cur());
 
-            let x_shift = meta.query_fixed(fixed[0], Rotation::cur());
-            let y_shift = meta.query_fixed(fixed[1], Rotation::cur());
+            let x_shift = meta.query_fixed(config.fixed[0], Rotation::cur());
+            let y_shift = meta.query_fixed(config.fixed[1], Rotation::cur());
 
-            let s = meta.query_selector(selectors[0]);
+            let s = meta.query_selector(config.decomposition_selector());
 
             vec![s * (word - (x * x_shift + y * y_shift + z))]
         });
 
-        ShaConfig {
-            advices: advices.try_into().unwrap(),
-            instance,
-            selectors: selectors.try_into().unwrap(),
-            fixed: fixed.try_into().unwrap(),
-        }
+        config
     }
 
     fn synthesize(
@@ -233,7 +212,7 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
             let new_cells = layouter.assign_region(
                 || format!("{name}: limb decomposition"),
                 |mut region| {
-                    config.selectors[0].enable(&mut region, offset + 2)?;
+                    config.decomposition_selector().enable(&mut region, offset + 2)?;
 
                     let word_cell = region.assign_advice(config.advices[0], offset + 2, *word)?;
                     region.constrain_equal(word_cell.cell(), input_cell.cell());
