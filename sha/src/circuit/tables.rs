@@ -1,37 +1,36 @@
 use crate::circuit::config::ShaConfig;
 use halo2_proofs::arithmetic::Field;
-use halo2_proofs::halo2curves::pairing::{MultiMillerLoop};
+use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
 use halo2_proofs::plonk::static_lookup::{StaticTable, StaticTableId};
 use halo2_proofs::plonk::ConstraintSystem;
 use halo2_proofs::poly::Rotation;
 
 pub struct ShaTables<E: MultiMillerLoop> {
-    x: StaticTable<E>,
-    y: StaticTable<E>,
-    z: StaticTable<E>,
-    maj: StaticTable<E>,
+    pub x: StaticTable<E>,
+    pub y: StaticTable<E>,
+    pub z: StaticTable<E>,
+    pub maj: StaticTable<E>,
+}
+
+impl<E: MultiMillerLoop> ShaTables<E> {
+    pub fn new(
+        x: StaticTable<E>,
+        y: StaticTable<E>,
+        z: StaticTable<E>,
+        maj: StaticTable<E>,
+    ) -> Self {
+        Self { x, y, z, maj }
+    }
 }
 
 impl<E: MultiMillerLoop> Default for ShaTables<E> {
     fn default() -> Self {
-        Self {
-            x: StaticTable {
-                opened: None,
-                committed: None,
-            },
-            y: StaticTable {
-                opened: None,
-                committed: None,
-            },
-            z: StaticTable {
-                opened: None,
-                committed: None,
-            },
-            maj: StaticTable {
-                opened: None,
-                committed: None,
-            },
-        }
+        let empty = StaticTable {
+            opened: None,
+            committed: None,
+        };
+
+        Self::new(empty.clone(), empty.clone(), empty.clone(), empty.clone())
     }
 }
 
