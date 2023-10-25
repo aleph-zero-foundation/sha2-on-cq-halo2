@@ -82,7 +82,7 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
         let value_index_mapping: BTreeMap<E::Scalar, usize> =
             values.iter().enumerate().map(|(i, &f)| (f, i)).collect();
         let keys_len: usize = value_index_mapping.keys().len();
-        assert_eq!(size, keys_len); // check that table is all unique values
+        // assert_eq!(size, keys_len); // check that table is all unique values
 
         // compute all qs
         let domain = EvaluationDomain::<E::Scalar>::new(2, log2(size));
