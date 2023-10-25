@@ -1,44 +1,17 @@
 mod config;
+mod gates;
+mod tables;
 
 use crate::circuit::config::ShaConfig;
+use crate::circuit::gates::configure_decomposition_gate;
+use crate::circuit::tables::{configure_majority_table, ShaTables};
 use crate::tables::Limbs;
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
-use halo2_proofs::plonk::static_lookup::{StaticTable, StaticTableId};
 use halo2_proofs::plonk::{Circuit, ConstraintSystem, Error};
 use halo2_proofs::poly::Rotation;
 use std::marker::PhantomData;
-
-pub struct ShaTables<E: MultiMillerLoop> {
-    x: StaticTable<E>,
-    y: StaticTable<E>,
-    z: StaticTable<E>,
-    maj: StaticTable<E>,
-}
-
-impl<E: MultiMillerLoop> Default for ShaTables<E> {
-    fn default() -> Self {
-        Self {
-            x: StaticTable {
-                opened: None,
-                committed: None,
-            },
-            y: StaticTable {
-                opened: None,
-                committed: None,
-            },
-            z: StaticTable {
-                opened: None,
-                committed: None,
-            },
-            maj: StaticTable {
-                opened: None,
-                committed: None,
-            },
-        }
-    }
-}
 
 pub struct ShaCircuit<E: MultiMillerLoop, L> {
     a: Value<E::Scalar>,
@@ -110,51 +83,10 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
     }
 
     fn configure(meta: &mut ConstraintSystem<E::Scalar>) -> Self::Config {
-        // ================
-        // COLUMNS CREATION
-        // ================
-        let config = ShaConfig::new::<E>(meta);
+        let config = ShaConfig::new(meta);
 
-        // ===============
-        // TABLES CREATION
-        // ===============
-        meta.lookup_static("majority", |meta| {
-            vec![
-                (
-                    meta.query_advice(config.advices[0], Rotation::cur()),
-                    StaticTableId("x".into()),
-                ),
-                (
-                    meta.query_advice(config.advices[1], Rotation::cur()),
-                    StaticTableId("y".into()),
-                ),
-                (
-                    meta.query_advice(config.advices[2], Rotation::cur()),
-                    StaticTableId("z".into()),
-                ),
-                (
-                    meta.query_advice(config.advices[3], Rotation::cur()),
-                    StaticTableId("maj".into()),
-                ),
-            ]
-        });
-
-        // =============
-        // GATE CREATION
-        // =============
-        meta.create_gate("simple decomposition", |meta| {
-            let word = meta.query_advice(config.advices[0], Rotation::cur());
-            let x = meta.query_advice(config.advices[1], Rotation::cur());
-            let y = meta.query_advice(config.advices[2], Rotation::cur());
-            let z = meta.query_advice(config.advices[3], Rotation::cur());
-
-            let x_shift = meta.query_fixed(config.fixed[0], Rotation::cur());
-            let y_shift = meta.query_fixed(config.fixed[1], Rotation::cur());
-
-            let s = meta.query_selector(config.decomposition_selector());
-
-            vec![s * (word - (x * x_shift + y * y_shift + z))]
-        });
+        configure_majority_table(meta, &config);
+        configure_decomposition_gate(meta, &config);
 
         config
     }
@@ -212,7 +144,9 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
             let new_cells = layouter.assign_region(
                 || format!("{name}: limb decomposition"),
                 |mut region| {
-                    config.decomposition_selector().enable(&mut region, offset + 2)?;
+                    config
+                        .decomposition_selector()
+                        .enable(&mut region, offset + 2)?;
 
                     let word_cell = region.assign_advice(config.advices[0], offset + 2, *word)?;
                     region.constrain_equal(word_cell.cell(), input_cell.cell());
