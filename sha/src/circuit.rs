@@ -1,17 +1,18 @@
 mod config;
 mod gates;
+mod synthesis;
 mod tables;
 #[cfg(test)]
 mod tests;
 
 use crate::circuit::config::ShaConfig;
 use crate::circuit::gates::configure_decomposition_gate;
+use crate::circuit::synthesis::{decompose, LimbDecompositionInput};
 use crate::circuit::tables::{configure_majority_table, ShaTables};
 use crate::tables::Limbs;
-use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
+use halo2_proofs::circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
-use halo2_proofs::plonk::{Circuit, ConstraintSystem, Error};
+use halo2_proofs::plonk::{Assigned, Circuit, ConstraintSystem, Error};
 use std::marker::PhantomData;
 
 pub struct ShaCircuit<E: MultiMillerLoop, L> {
@@ -55,6 +56,30 @@ impl<E: MultiMillerLoop, L> ShaCircuit<E, L> {
 
             _marker: PhantomData::default(),
         }
+    }
+
+    fn limb_decomposition_inputs(
+        &self,
+        row_offset: usize,
+        input_cells: [AssignedCell<&Assigned<E::Scalar>, E::Scalar>; 8],
+    ) -> Vec<LimbDecompositionInput<E::Scalar>> {
+        let words = [self.a, self.b, self.c, self.e, self.f, self.g];
+        let cells = [
+            &input_cells[0],
+            &input_cells[1],
+            &input_cells[2],
+            &input_cells[4],
+            &input_cells[5],
+            &input_cells[6],
+        ];
+        let names = ["a", "b", "c", "e", "f", "g"];
+
+        (0..6).map(move |idx| LimbDecompositionInput {
+            row: row_offset + idx,
+            origin_cell: *cells[idx].cell(),
+            source_value: words[idx],
+            name: names[idx],
+        }).collect::<Vec<_>>()
     }
 }
 
@@ -128,50 +153,13 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // =========================================
         // Decompose a,b,c,e,f,g into shorter limbs.
         // =========================================
-        let words = [self.a, self.b, self.c, self.e, self.f, self.g];
-        let cells = [
-            &input_cells[0],
-            &input_cells[1],
-            &input_cells[2],
-            &input_cells[4],
-            &input_cells[5],
-            &input_cells[6],
-        ];
-        let names = ["a", "b", "c", "e", "f", "g"];
-
-        let mut limb_cells = vec![];
-
-        for (offset, ((word, input_cell), name)) in words.iter().zip(cells).zip(names).enumerate() {
-            let new_cells = layouter.assign_region(
-                || format!("{name}: limb decomposition"),
-                |mut region| {
-                    config
-                        .decomposition_selector()
-                        .enable(&mut region, offset + 2)?;
-
-                    let word_cell = region.assign_advice(config.advices[0], offset + 2, *word)?;
-                    region.constrain_equal(word_cell.cell(), input_cell.cell());
-
-                    let shift = L::SECOND_LIMB_LEN;
-                    let x = word
-                        .map(|w| w.get_lower_128() >> (shift + shift))
-                        .map(E::Scalar::from_u128);
-                    let y = word
-                        .map(|w| (w.get_lower_128() >> shift) % (1 << shift))
-                        .map(E::Scalar::from_u128);
-                    let z = word
-                        .map(|w| w.get_lower_128() % (1 << shift))
-                        .map(E::Scalar::from_u128);
-
-                    let x_cell = region.assign_advice(config.advices[1], offset + 2, x)?;
-                    let y_cell = region.assign_advice(config.advices[2], offset + 2, y)?;
-                    let z_cell = region.assign_advice(config.advices[3], offset + 2, z)?;
-
-                    Ok((x_cell, y_cell, z_cell))
-                },
-            )?;
-            limb_cells.push(new_cells);
-        }
+        let limb_cells: Vec<_> = self
+            .limb_decomposition_inputs(2, input_cells)
+            .into_iter()
+            .map(|input| decompose::<_, L>(&mut layouter, &config, input))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
 
         // =========================
         // Compute bitwise majority.
