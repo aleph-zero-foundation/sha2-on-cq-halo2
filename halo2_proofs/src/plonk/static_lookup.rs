@@ -28,7 +28,7 @@ pub fn log2(x: usize) -> u32 {
     (usize::BITS - 1) - x.leading_zeros()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct StaticTable<E: MultiMillerLoop> {
     pub opened: Option<StaticTableValues<E>>,
     pub committed: Option<StaticCommittedTable<E>>,

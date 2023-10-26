@@ -1,20 +1,22 @@
 mod config;
-mod gates;
 mod synthesis;
 mod tables;
 #[cfg(test)]
 mod tests;
 
 use crate::circuit::config::ShaConfig;
-use crate::circuit::gates::configure_decomposition_gate;
 use crate::circuit::synthesis::{decompose, LimbDecompositionInput};
-use crate::circuit::tables::{configure_majority_table, ShaTables};
+use crate::circuit::tables::{
+    configure_choose_table, configure_decomposition_table, configure_majority_table,
+    configure_rot0_table, configure_rot1_table, ShaTables,
+};
 use crate::tables::Limbs;
 use halo2_proofs::circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
 use halo2_proofs::plonk::{Assigned, Circuit, ConstraintSystem, Error};
 use std::marker::PhantomData;
 
+#[derive(Debug, Clone)]
 pub struct ShaCircuit<E: MultiMillerLoop, L> {
     a: Value<E::Scalar>,
     b: Value<E::Scalar>,
@@ -28,6 +30,25 @@ pub struct ShaCircuit<E: MultiMillerLoop, L> {
     tables: ShaTables<E>,
 
     _marker: PhantomData<(E, L)>,
+}
+
+impl<E: MultiMillerLoop, L> Default for ShaCircuit<E, L> {
+    fn default() -> Self {
+        Self {
+            a: Value::unknown(),
+            b: Value::unknown(),
+            c: Value::unknown(),
+            d: Value::unknown(),
+            e: Value::unknown(),
+            f: Value::unknown(),
+            g: Value::unknown(),
+            h: Value::unknown(),
+
+            tables: ShaTables::default(),
+
+            _marker: PhantomData::default(),
+        }
+    }
 }
 
 impl<E: MultiMillerLoop, L> ShaCircuit<E, L> {
@@ -74,29 +95,14 @@ impl<E: MultiMillerLoop, L> ShaCircuit<E, L> {
         ];
         let names = ["a", "b", "c", "e", "f", "g"];
 
-        (0..6).map(move |idx| LimbDecompositionInput {
-            row: row_offset + idx,
-            origin_cell: *cells[idx].cell(),
-            source_value: words[idx],
-            name: names[idx],
-        }).collect::<Vec<_>>()
-    }
-}
-
-impl<E: MultiMillerLoop, L> Default for ShaCircuit<E, L> {
-    fn default() -> Self {
-        Self {
-            a: Value::unknown(),
-            b: Value::unknown(),
-            c: Value::unknown(),
-            d: Value::unknown(),
-            e: Value::unknown(),
-            f: Value::unknown(),
-            g: Value::unknown(),
-            h: Value::unknown(),
-            tables: ShaTables::default(),
-            _marker: PhantomData::default(),
-        }
+        (0..6)
+            .map(move |idx| LimbDecompositionInput {
+                row: row_offset + idx,
+                origin_cell: *cells[idx].cell(),
+                source_value: words[idx],
+                name: names[idx],
+            })
+            .collect::<Vec<_>>()
     }
 }
 
@@ -111,8 +117,11 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
     fn configure(meta: &mut ConstraintSystem<E::Scalar>) -> Self::Config {
         let config = ShaConfig::new(meta);
 
+        configure_decomposition_table(meta, &config);
         configure_majority_table(meta, &config);
-        configure_decomposition_gate(meta, &config);
+        configure_choose_table(meta, &config);
+        configure_rot0_table(meta, &config);
+        configure_rot1_table(meta, &config);
 
         config
     }
@@ -153,7 +162,7 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // =========================================
         // Decompose a,b,c,e,f,g into shorter limbs.
         // =========================================
-        let limb_cells: Vec<_> = self
+        let _limb_cells: Vec<_> = self
             .limb_decomposition_inputs(2, input_cells)
             .into_iter()
             .map(|input| decompose::<_, L>(&mut layouter, &config, input))

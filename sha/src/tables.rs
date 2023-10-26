@@ -61,6 +61,7 @@ mod limbs {
         }
     }
 
+    #[derive(Default)]
     pub struct TinyLimbs;
     impl Limbs for TinyLimbs {
         type FullWord = u8;
@@ -68,6 +69,7 @@ mod limbs {
         const SECOND_LIMB_LEN: u8 = 2;
     }
 
+    #[derive(Default)]
     pub struct ShortLimbs;
     impl Limbs for ShortLimbs {
         type FullWord = u16;
@@ -75,6 +77,7 @@ mod limbs {
         const SECOND_LIMB_LEN: u8 = 5;
     }
 
+    #[derive(Default)]
     pub struct LongLimbs;
     impl Limbs for LongLimbs {
         type FullWord = u32;

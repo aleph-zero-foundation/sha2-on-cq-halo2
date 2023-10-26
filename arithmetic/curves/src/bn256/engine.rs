@@ -629,7 +629,7 @@ pub fn pairing(g1: &G1Affine, g2: &G2Affine) -> Gt {
     u.final_exponentiation()
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Bn256;
 
 impl Engine for Bn256 {

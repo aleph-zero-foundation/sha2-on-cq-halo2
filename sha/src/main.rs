@@ -1,3 +1,5 @@
+#![feature(array_zip)]
+
 use crate::circuit::ShaCircuit;
 use crate::simple_circuit::SimpleCircuit;
 use crate::tables::ShortLimbs;

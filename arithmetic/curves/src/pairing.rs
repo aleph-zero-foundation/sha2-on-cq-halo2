@@ -66,7 +66,7 @@ pub trait PairingCurveAffine: CurveAffine + UncompressedEncoding {
 }
 
 /// An engine that can compute sums of pairings in an efficient way.
-pub trait MultiMillerLoop: Engine {
+pub trait MultiMillerLoop: Engine + Default {
     /// The prepared form of `Self::G2Affine`.
     type G2Prepared: Clone + Send + Sync + From<Self::G2Affine>;
 

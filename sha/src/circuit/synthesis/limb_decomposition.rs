@@ -6,15 +6,22 @@ use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
 use halo2_proofs::plonk::{Assigned, Error};
 
 pub struct LimbDecompositionInput<F: Field> {
+    /// The row in which the decomposition gate happening.
     pub row: usize,
+    /// The cell from which the word (to be decomposed) should 'copied' from.
     pub origin_cell: Cell,
+    /// The value of the word to be decomposed.
     pub source_value: Value<F>,
+    /// Identifier for the gate.
     pub name: &'static str,
 }
 
 pub struct LimbDecompositionOutput<'assign, F: Field> {
+    /// The cell containing the first limb.
     pub x_cell: AssignedCell<&'assign Assigned<F>, F>,
+    /// The cell containing the second limb.
     pub y_cell: AssignedCell<&'assign Assigned<F>, F>,
+    /// The cell containing the third limb.
     pub z_cell: AssignedCell<&'assign Assigned<F>, F>,
 }
 
@@ -26,12 +33,13 @@ pub fn decompose<'assign, E: MultiMillerLoop, L: Limbs>(
     layouter.assign_region(
         || format!("{}: limb decomposition", input.name),
         |mut region| {
-            // Enable decomposition gate.
+            // Enable this gate with corresponding selector. This will constrain the values to be
+            // computed correctly (by a lookup).
             config
                 .decomposition_selector()
                 .enable(&mut region, input.row)?;
 
-            // Assign value to the decomposed word.
+            // Assign value to the word cell.
             let word = input.source_value;
             let word_cell = region.assign_advice(config.advices[0], input.row, word)?;
 
