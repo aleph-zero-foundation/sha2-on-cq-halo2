@@ -1,22 +1,20 @@
-use group::{Curve, Group};
-use rand::{Rng, SeedableRng};
-use std::{collections::BTreeMap, fmt::Debug, marker::PhantomData};
+use group::Group;
+use rand::SeedableRng;
+use std::collections::BTreeMap;
 
-use ff::{Field, PrimeField};
+use ff::Field;
 use halo2_proofs::{
     circuit::{SimpleFloorPlanner, Value},
     dev::MockProver,
     plonk::{
         create_proof, keygen_pk, keygen_vk,
-        static_lookup::{
-            StaticCommittedTable, StaticTable, StaticTableConfig, StaticTableId, StaticTableValues,
-        },
-        verify_proof, Advice, Circuit, Column, Selector,
+        static_lookup::{StaticTable, StaticTableConfig, StaticTableId, StaticTableValues},
+        verify_proof, Advice, Circuit, Column,
     },
     poly::{
         commitment::ParamsProver,
         kzg::{
-            commitment::{KZGCommitmentScheme, ParamsKZG, TableSRS},
+            commitment::{ParamsKZG, TableSRS},
             multiopen::{ProverGWC, VerifierGWC},
             strategy::AccumulatorStrategy,
         },
@@ -27,21 +25,57 @@ use halo2_proofs::{
     },
 };
 use halo2curves::{
-    bn256::{Bn256, Fq2Bytes},
+    bn256::Bn256,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
-    serde::SerdeObject,
-    CurveAffine, FieldExt,
+    FieldExt,
 };
-use rand_core::{OsRng, RngCore};
+use rand_core::OsRng;
 
 #[derive(Clone)]
 struct MyCircuit<E: MultiMillerLoop> {
+    values: Vec<u64>,
     table: StaticTable<E>,
     table_2: StaticTable<E>,
 }
 
+#[derive(Clone)]
+struct MyConfig {
+    advice: Column<Advice>,
+    advice_2: Column<Advice>,
+}
+
+impl<E: MultiMillerLoop> MyCircuit<E> {
+    fn assign_pairs(
+        &self,
+        config: MyConfig,
+        mut layouter: impl halo2_proofs::circuit::Layouter<E::Scalar, E = E>,
+    ) -> Result<(), halo2_proofs::plonk::Error> {
+        for (i, &value) in self.values.iter().enumerate() {
+            layouter.assign_region(
+                || format!("value {}", i),
+                |mut region| {
+                    region.assign_advice(
+                        config.advice,
+                        0,
+                        Value::known(<E as Engine>::Scalar::from(value)),
+                    )?;
+                    region.assign_advice(
+                        config.advice_2,
+                        0,
+                        Value::known(<E as Engine>::Scalar::from(value * 2)),
+                    )?;
+
+                    Ok(())
+                },
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
 impl<E: MultiMillerLoop<Scalar = F>, F: Field + FieldExt> Circuit<E> for MyCircuit<E> {
-    type Config = (Column<Advice>, Column<Advice>);
+    type Config = MyConfig;
 
     type FloorPlanner = SimpleFloorPlanner<E>;
 
@@ -65,7 +99,7 @@ impl<E: MultiMillerLoop<Scalar = F>, F: Field + FieldExt> Circuit<E> for MyCircu
             ]
         });
 
-        (advice, advice_2)
+        MyConfig { advice, advice_2 }
     }
 
     fn synthesize(
@@ -77,35 +111,7 @@ impl<E: MultiMillerLoop<Scalar = F>, F: Field + FieldExt> Circuit<E> for MyCircu
         layouter
             .register_static_table(StaticTableId(String::from("table_2")), self.table_2.clone());
 
-        layouter.assign_region(
-            || "",
-            |mut region| {
-                region.assign_advice(
-                    config.0,
-                    0,
-                    Value::known(<E as Engine>::Scalar::from_u128(30)),
-                )?;
-                region.assign_advice(
-                    config.0,
-                    1,
-                    Value::known(<E as Engine>::Scalar::from_u128(6)),
-                )?;
-                region.assign_advice(
-                    config.1,
-                    0,
-                    Value::known(<E as Engine>::Scalar::from_u128(15)),
-                )?;
-                region.assign_advice(
-                    config.1,
-                    1,
-                    Value::known(<E as Engine>::Scalar::from_u128(3)),
-                )?;
-
-                Ok(())
-            },
-        )?;
-
-        Ok(())
+        self.assign_pairs(config, layouter.namespace(|| "assign pairs"))
     }
 }
 
@@ -115,51 +121,25 @@ static SEED: [u8; 32] = [
     0,
 ];
 
-fn generate_table(params: &TableSRS<Bn256>, k: usize) -> (StaticTable<Bn256>, StaticTable<Bn256>) {
+fn generate_table(
+    params: &TableSRS<Bn256>,
+    table_range: usize,
+    k: usize,
+) -> (StaticTable<Bn256>, StaticTable<Bn256>) {
     use halo2curves::bn256::Fr;
 
-    let table_values = [
-        Fr::from(0),
-        Fr::from(1),
-        Fr::from(6),
-        Fr::from(8),
-        Fr::from(10),
-        Fr::from(12),
-        Fr::from(14),
-        Fr::from(16),
-        Fr::from(18),
-        Fr::from(20),
-        Fr::from(22),
-        Fr::from(24),
-        Fr::from(26),
-        Fr::from(28),
-        Fr::from(30),
-        Fr::from(32),
-    ];
+    let mut table_values: Vec<_> = (0..table_range).map(|i| Fr::from(i as u64)).collect();
+    // Replace the second row with 0 to test for duplicated values in table
+    table_values[1] = Fr::zero();
 
-    let table_2_values = [
-        Fr::from(0),
-        Fr::from(2),
-        Fr::from(3),
-        Fr::from(4),
-        Fr::from(5),
-        Fr::from(6),
-        Fr::from(7),
-        Fr::from(8),
-        Fr::from(9),
-        Fr::from(10),
-        Fr::from(11),
-        Fr::from(12),
-        Fr::from(13),
-        Fr::from(14),
-        Fr::from(15),
-        Fr::from(16),
-    ];
+    let mut table_2_values: Vec<_> = (0..table_range).map(|i| Fr::from(i as u64 * 2)).collect();
+    // Replace the second row with 0 to test for duplicated values in table
+    table_2_values[1] = Fr::zero();
 
-    let n = 1 << k;
     let table = StaticTableValues::new(&table_values, &params.g1());
     let table_2 = StaticTableValues::new(&table_2_values, &params.g1());
 
+    let n = 1 << k;
     let committed = table.commit(params.g1().len(), params.g2(), n);
     let committed_2 = table_2.commit(params.g1().len(), params.g2(), n);
 
@@ -177,7 +157,7 @@ fn generate_table(params: &TableSRS<Bn256>, k: usize) -> (StaticTable<Bn256>, St
 }
 
 #[test]
-fn my_test_e2e() {
+fn static_lookup_e2e() {
     const K: u32 = 3;
     let mut rng = rand_chacha::ChaCha8Rng::from_seed(SEED);
     let s = <Bn256 as Engine>::Scalar::random(&mut rng);
@@ -186,8 +166,12 @@ fn my_test_e2e() {
 
     let table_16_srs =
         TableSRS::<Bn256>::setup_from_toxic_waste(table_16_size - 1, table_16_size, s);
-    let (table, table_2) = generate_table(&table_16_srs, K as usize);
-    let circuit = MyCircuit { table, table_2 };
+    let (table, table_2) = generate_table(&table_16_srs, 16, K as usize);
+    let circuit = MyCircuit {
+        values: vec![0, 5, 11],
+        table,
+        table_2,
+    };
 
     let prover = MockProver::run(K, &circuit, vec![]).unwrap();
     prover.assert_satisfied();
