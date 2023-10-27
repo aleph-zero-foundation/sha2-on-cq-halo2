@@ -9,7 +9,10 @@ use rand_core::OsRng;
 pub(crate) mod prover;
 pub(crate) mod verifier;
 
-use std::{collections::BTreeMap, io};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io,
+};
 
 use crate::{
     arithmetic::{best_multiexp, kate_division},
@@ -68,8 +71,8 @@ impl<E: MultiMillerLoop> StaticTableConfig<E> {
 #[derive(Clone, Debug)]
 pub struct StaticTableValues<E: MultiMillerLoop> {
     size: usize,
-    // Mapping from value to its index in the table
-    value_index_mapping: BTreeMap<E::Scalar, usize>,
+    // Mapping from value to its indices in the table
+    value_index_mapping: BTreeMap<E::Scalar, BTreeSet<usize>>,
     // quotient commitments
     qs: Vec<E::G1>,
 }
@@ -79,10 +82,13 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
         let size = values.len();
         assert!(is_pow_2(size));
 
-        let value_index_mapping: BTreeMap<E::Scalar, usize> =
-            values.iter().enumerate().map(|(i, &f)| (f, i)).collect();
-        let keys_len: usize = value_index_mapping.keys().len();
-        assert_eq!(size, keys_len); // check that table is all unique values
+        let mut value_index_mapping: BTreeMap<E::Scalar, BTreeSet<usize>> = BTreeMap::new();
+        for (i, f) in values.iter().enumerate() {
+            value_index_mapping
+                .entry(*f)
+                .and_modify(|indices| assert!(indices.insert(i)))
+                .or_insert(BTreeSet::from([i]));
+        }
 
         // compute all qs
         let domain = EvaluationDomain::<E::Scalar>::new(2, log2(size));
@@ -136,7 +142,17 @@ impl<E: MultiMillerLoop> StaticTableValues<E> {
         assert!(is_pow_2(self.size));
         let zv = srs_g2[self.size] - srs_g2[0];
 
-        let mut table_coeffs: Vec<E::Scalar> = self.value_index_mapping.keys().cloned().collect();
+        let table_size = self
+            .value_index_mapping
+            .values()
+            .fold(0, |acc, indices| acc + indices.len());
+        let mut table_coeffs: Vec<E::Scalar> = vec![E::Scalar::zero(); table_size];
+        for (value, indices) in self.value_index_mapping.iter() {
+            for index in indices.iter() {
+                table_coeffs[*index] = *value;
+            }
+        }
+
         EvaluationDomain::<E::Scalar>::ifft(
             table_coeffs.as_mut_slice(),
             domain.get_omega_inv(),

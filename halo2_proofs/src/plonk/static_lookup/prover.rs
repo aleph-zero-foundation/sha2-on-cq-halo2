@@ -20,7 +20,11 @@ use crate::{
     },
     transcript::{EncodedChallenge, TranscriptWrite},
 };
-use std::{collections::BTreeMap, fmt::Debug, iter};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Debug,
+    iter,
+};
 
 use crate::plonk::Error;
 use group::{prime::PrimeCurveAffine, Curve, Group};
@@ -130,31 +134,38 @@ impl<F: FieldExt> super::Argument<F> {
             .collect();
 
         for row in 0..usable_rows {
-            let mut idx: Option<usize> = None;
+            let mut idx_set: Option<BTreeSet<usize>> = None;
             for (table_idx, (evals, table)) in
                 evaluated_expressions.iter().zip(tables.iter()).enumerate()
             {
                 let fi = evals.get(row).unwrap();
-                let index: &usize = table
+                let indices: &BTreeSet<usize> = table
                     .value_index_mapping
                     .get(fi)
                     .expect(&format!("{:?} not in table", *fi));
 
                 // append in new map
-                table_index_value_mappings[table_idx].insert(*index, *fi);
+                for index in indices.iter() {
+                    table_index_value_mappings[table_idx].insert(*index, *fi);
+                }
 
-                if let Some(prev_index) = idx {
-                    if prev_index != *index {
+                if let Some(prev_indices) = idx_set {
+                    let intersection: Vec<usize> =
+                        prev_indices.intersection(&indices).copied().collect();
+                    if intersection.is_empty() {
                         panic!("Vector lookup must be on the same table row")
                     }
+                    idx_set = Some(intersection.into_iter().collect())
                 } else {
-                    idx = Some(*index);
+                    idx_set = Some(indices.clone())
                 }
             }
 
-            if let Some(index) = idx {
-                let multiplicity = m_sparse.entry(index).or_insert(E::Scalar::zero());
-                *multiplicity += E::Scalar::one();
+            if let Some(idx_set) = idx_set {
+                m_sparse
+                    .entry(*idx_set.first().unwrap())
+                    .and_modify(|m| *m += E::Scalar::one())
+                    .or_insert(E::Scalar::one());
             } else {
                 panic!("Lookup failed")
             }
