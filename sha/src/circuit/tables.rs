@@ -51,9 +51,9 @@ pub struct RotationTables<E: MultiMillerLoop> {
 
 #[derive(Debug, Clone, Default)]
 pub struct ShaTables<E: MultiMillerLoop> {
-    decomposition: DecompositionTables<E>,
-    bitwise: BitwiseTables<E>,
-    rotation: RotationTables<E>,
+    pub decomposition: DecompositionTables<E>,
+    pub bitwise: BitwiseTables<E>,
+    pub rotation: RotationTables<E>,
 }
 
 impl<E: MultiMillerLoop> ShaTables<E> {

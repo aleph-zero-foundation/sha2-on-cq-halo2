@@ -8,6 +8,7 @@ use halo2_proofs::halo2curves::pairing::Engine;
 use halo2_proofs::plonk::static_lookup::{StaticTable, StaticTableValues};
 use halo2_proofs::poly::kzg::commitment::TableSRS;
 use rand_core::SeedableRng;
+use crate::circuit::tables::DecompositionTables;
 
 fn generate_tables<L: Limbs>(params: &TableSRS<Bn256>, k: u32) -> ShaTables<Bn256> {
     let n = 1 << k;
@@ -25,24 +26,15 @@ fn generate_tables<L: Limbs>(params: &TableSRS<Bn256>, k: u32) -> ShaTables<Bn25
     let committed_z = table_z.commit(params.g1().len(), params.g2(), n);
     let committed_maj = table_maj.commit(params.g1().len(), params.g2(), n);
 
-    ShaTables::new(
-        StaticTable {
-            opened: Some(table_x),
-            committed: Some(committed_x),
+    ShaTables {
+        decomposition: DecompositionTables {
+            decomp_x: StaticTable { opened: Some(table_x), committed: Some(committed_x) },
+            decomp_y: StaticTable { opened: Some(table_y), committed: Some(committed_y) },
+            decomp_z: StaticTable { opened: Some(table_z), committed: Some(committed_z) },
+            decomp: StaticTable { opened: Some(table_maj), committed: Some(committed_maj) },
         },
-        StaticTable {
-            opened: Some(table_y),
-            committed: Some(committed_y),
-        },
-        StaticTable {
-            opened: Some(table_z),
-            committed: Some(committed_z),
-        },
-        StaticTable {
-            opened: Some(table_maj),
-            committed: Some(committed_maj),
-        },
-    )
+        ..Default::default()
+    }
 }
 
 #[test]
