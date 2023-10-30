@@ -1,5 +1,5 @@
 use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::LimbDecomposition;
+use crate::circuit::synthesis::{CelledValue, LimbDecomposition};
 use halo2_proofs::arithmetic::Field;
 use halo2_proofs::circuit::{AssignedCell, Cell, Layouter, Value};
 use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
@@ -19,7 +19,7 @@ pub fn bitwise_majority<'assign, 'limb, E: MultiMillerLoop>(
     config: &ShaConfig,
     input: BitwiseMajorityInput<'assign, 'limb, E::Scalar>,
 ) -> Result<BitwiseMajorityOutput<'assign, E::Scalar>, Error> {
-    let (x_cell, x_value) = bitwise_majority_row(
+    let x = bitwise_majority_row(
         layouter,
         config,
         input.row_offset,
@@ -27,7 +27,7 @@ pub fn bitwise_majority<'assign, 'limb, E: MultiMillerLoop>(
         input.x_values(),
         input.x_cells(),
     )?;
-    let (y_cell, y_value) = bitwise_majority_row(
+    let y = bitwise_majority_row(
         layouter,
         config,
         input.row_offset + 1,
@@ -35,7 +35,7 @@ pub fn bitwise_majority<'assign, 'limb, E: MultiMillerLoop>(
         input.y_values(),
         input.y_cells(),
     )?;
-    let (z_cell, z_value) = bitwise_majority_row(
+    let z = bitwise_majority_row(
         layouter,
         config,
         input.row_offset + 2,
@@ -44,14 +44,7 @@ pub fn bitwise_majority<'assign, 'limb, E: MultiMillerLoop>(
         input.z_cells(),
     )?;
 
-    Ok(LimbDecomposition {
-        x_cell,
-        y_cell,
-        z_cell,
-        x_value,
-        y_value,
-        z_value,
-    })
+    Ok(LimbDecomposition { x, y, z })
 }
 
 fn bitwise_majority_row<'assign, 'limb, E: MultiMillerLoop>(
@@ -61,13 +54,7 @@ fn bitwise_majority_row<'assign, 'limb, E: MultiMillerLoop>(
     region_name: &str,
     values: [Value<E::Scalar>; 3],
     cells: [&'limb Cell; 3],
-) -> Result<
-    (
-        AssignedCell<&'assign Assigned<E::Scalar>, E::Scalar>,
-        Value<E::Scalar>,
-    ),
-    Error,
-> {
+) -> Result<CelledValue<'assign, E::Scalar>, Error> {
     layouter.assign_region(
         || region_name,
         |mut region| {
@@ -84,7 +71,7 @@ fn bitwise_majority_row<'assign, 'limb, E: MultiMillerLoop>(
             let value = Value::known(E::Scalar::default()); // todo compute true majority
             let w_maj = region.assign_advice(config.advices[3], row_offset, value)?;
 
-            Ok((w_maj, value))
+            Ok(CelledValue { cell: w_maj, value })
         },
     )
 }
@@ -92,49 +79,49 @@ fn bitwise_majority_row<'assign, 'limb, E: MultiMillerLoop>(
 impl<'assign, 'limb, F: Field> BitwiseMajorityInput<'assign, 'limb, F> {
     fn x_values(&self) -> [Value<F>; 3] {
         [
-            self.a_limbs.x_value,
-            self.b_limbs.x_value,
-            self.c_limbs.x_value,
+            self.a_limbs.x.value,
+            self.b_limbs.x.value,
+            self.c_limbs.x.value,
         ]
     }
 
     fn x_cells(&self) -> [&'limb Cell; 3] {
         [
-            self.a_limbs.x_cell.cell(),
-            self.b_limbs.x_cell.cell(),
-            self.c_limbs.x_cell.cell(),
+            self.a_limbs.x.cell.cell(),
+            self.b_limbs.x.cell.cell(),
+            self.c_limbs.x.cell.cell(),
         ]
     }
 
     fn y_values(&self) -> [Value<F>; 3] {
         [
-            self.a_limbs.y_value,
-            self.b_limbs.y_value,
-            self.c_limbs.y_value,
+            self.a_limbs.y.value,
+            self.b_limbs.y.value,
+            self.c_limbs.y.value,
         ]
     }
 
     fn y_cells(&self) -> [&'limb Cell; 3] {
         [
-            self.a_limbs.y_cell.cell(),
-            self.b_limbs.y_cell.cell(),
-            self.c_limbs.y_cell.cell(),
+            self.a_limbs.y.cell.cell(),
+            self.b_limbs.y.cell.cell(),
+            self.c_limbs.y.cell.cell(),
         ]
     }
 
     fn z_values(&self) -> [Value<F>; 3] {
         [
-            self.a_limbs.z_value,
-            self.b_limbs.z_value,
-            self.c_limbs.z_value,
+            self.a_limbs.z.value,
+            self.b_limbs.z.value,
+            self.c_limbs.z.value,
         ]
     }
 
     fn z_cells(&self) -> [&'limb Cell; 3] {
         [
-            self.a_limbs.z_cell.cell(),
-            self.b_limbs.z_cell.cell(),
-            self.c_limbs.z_cell.cell(),
+            self.a_limbs.z.cell.cell(),
+            self.b_limbs.z.cell.cell(),
+            self.c_limbs.z.cell.cell(),
         ]
     }
 }

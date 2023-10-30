@@ -1,10 +1,10 @@
 use crate::circuit::config::ShaConfig;
+use crate::circuit::synthesis::{CelledValue, LimbDecomposition};
 use crate::tables::Limbs;
 use halo2_proofs::arithmetic::{Field, FieldExt};
 use halo2_proofs::circuit::{AssignedCell, Cell, Layouter, Value};
 use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
 use halo2_proofs::plonk::{Assigned, Error};
-use crate::circuit::synthesis::LimbDecomposition;
 
 pub struct LimbDecompositionInput<F: Field> {
     /// The row in which the decomposition gate happening.
@@ -56,12 +56,18 @@ pub fn decompose<'assign, E: MultiMillerLoop, L: Limbs>(
             let z_cell = region.assign_advice(config.advices[3], input.row, z)?;
 
             Ok(LimbDecomposition {
-                x_cell,
-                y_cell,
-                z_cell,
-                x_value: x,
-                y_value: y,
-                z_value: z,
+                x: CelledValue {
+                    cell: x_cell,
+                    value: x,
+                },
+                y: CelledValue {
+                    cell: y_cell,
+                    value: y,
+                },
+                z: CelledValue {
+                    cell: z_cell,
+                    value: z,
+                },
             })
         },
     )
