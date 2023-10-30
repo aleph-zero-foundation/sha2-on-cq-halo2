@@ -18,7 +18,10 @@ impl ShaConfig {
             meta.enable_equality(column);
             column
         });
+
         let instance = meta.instance_column();
+        meta.enable_equality(instance);
+
         let lookup_selectors =
             Self::create_columns::<LOOKUP_SELECTOR_NUM, _, _>(|| meta.complex_selector());
 
