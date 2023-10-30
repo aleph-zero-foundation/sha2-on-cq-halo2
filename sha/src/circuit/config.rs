@@ -1,8 +1,8 @@
 use halo2_proofs::arithmetic::Field;
-use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance, Selector};
+use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Instance, Selector};
 
-const ADVICE_NUM: usize = 4;
-const LOOKUP_SELECTOR_NUM: usize = 5;
+pub const ADVICE_NUM: usize = 4;
+pub const LOOKUP_SELECTOR_NUM: usize = 5;
 
 #[derive(Clone, Debug)]
 pub struct ShaConfig {

@@ -3,7 +3,7 @@ use crate::circuit::tables::columns::*;
 use halo2_proofs::arithmetic::Field;
 use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
 use halo2_proofs::plonk::static_lookup::{StaticTable, StaticTableId};
-use halo2_proofs::plonk::{ConstraintSystem, Expression, Selector};
+use halo2_proofs::plonk::{ConstraintSystem, Selector};
 use halo2_proofs::poly::Rotation;
 
 pub mod columns {

@@ -5,7 +5,9 @@ mod tables;
 mod tests;
 
 use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::{decompose, LimbDecompositionInput};
+use crate::circuit::synthesis::{
+    decompose, initial_assignment, LimbDecompositionInput,
+};
 use crate::circuit::tables::{
     configure_choose_table, configure_decomposition_table, configure_majority_table,
     configure_rot0_table, configure_rot1_table, ShaTables,
@@ -134,30 +136,13 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // ==========================================================================
         // Assign inputs (a..h) and copy 6 of them right away to the instance column.
         // ==========================================================================
-        let input_cells = layouter.assign_region(
-            || "assign inputs",
-            |mut region| {
-                let a = region.assign_advice(config.advices[0], 0, self.a)?;
-                let b = region.assign_advice(config.advices[1], 0, self.b)?;
-                let c = region.assign_advice(config.advices[2], 0, self.c)?;
-                let d = region.assign_advice(config.advices[3], 0, self.d)?;
-
-                let e = region.assign_advice(config.advices[0], 1, self.e)?;
-                let f = region.assign_advice(config.advices[1], 1, self.f)?;
-                let g = region.assign_advice(config.advices[2], 1, self.g)?;
-                let h = region.assign_advice(config.advices[3], 1, self.h)?;
-
-                Ok([a, b, c, d, e, f, g, h])
-            },
+        let input_cells = initial_assignment(
+            &mut layouter,
+            &config,
+            [
+                self.a, self.b, self.c, self.d, self.e, self.f, self.g, self.h,
+            ],
         )?;
-
-        layouter.constrain_instance(*input_cells[0].cell(), config.instance, 1); // b' = a
-        layouter.constrain_instance(*input_cells[1].cell(), config.instance, 2); // c' = b
-        layouter.constrain_instance(*input_cells[2].cell(), config.instance, 3); // d' = c
-
-        layouter.constrain_instance(*input_cells[4].cell(), config.instance, 5); // f' = e
-        layouter.constrain_instance(*input_cells[5].cell(), config.instance, 6); // g' = f
-        layouter.constrain_instance(*input_cells[6].cell(), config.instance, 7); // h' = g
 
         // =========================================
         // Decompose a,b,c,e,f,g into shorter limbs.
@@ -166,8 +151,6 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
             .limb_decomposition_inputs(2, input_cells)
             .into_iter()
             .map(|input| decompose::<_, L>(&mut layouter, &config, input))
-            .collect::<Vec<_>>()
-            .into_iter()
             .collect::<Result<Vec<_>, _>>()?;
 
         // =========================
