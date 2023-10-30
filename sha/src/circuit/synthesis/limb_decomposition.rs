@@ -23,6 +23,10 @@ pub struct LimbDecompositionOutput<'assign, F: Field> {
     pub y_cell: AssignedCell<&'assign Assigned<F>, F>,
     /// The cell containing the third limb.
     pub z_cell: AssignedCell<&'assign Assigned<F>, F>,
+
+    pub x_value: Value<F>,
+    pub y_value: Value<F>,
+    pub z_value: Value<F>,
 }
 
 pub fn decompose<'assign, E: MultiMillerLoop, L: Limbs>(
@@ -67,6 +71,9 @@ pub fn decompose<'assign, E: MultiMillerLoop, L: Limbs>(
                 x_cell,
                 y_cell,
                 z_cell,
+                x_value: x,
+                y_value: y,
+                z_value: z,
             })
         },
     )

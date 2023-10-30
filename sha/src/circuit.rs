@@ -5,9 +5,7 @@ mod tables;
 mod tests;
 
 use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::{
-    decompose, initial_assignment, LimbDecompositionInput,
-};
+use crate::circuit::synthesis::{bitwise_majority, BitwiseMajorityInput, decompose, initial_assignment, LimbDecompositionInput};
 use crate::circuit::tables::{
     configure_choose_table, configure_decomposition_table, configure_majority_table,
     configure_rot0_table, configure_rot1_table, ShaTables,
@@ -147,7 +145,7 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // =========================================
         // Decompose a,b,c,e,f,g into shorter limbs.
         // =========================================
-        let _limb_cells: Vec<_> = self
+        let limb_cells: Vec<_> = self
             .limb_decomposition_inputs(2, input_cells)
             .into_iter()
             .map(|input| decompose::<_, L>(&mut layouter, &config, input))
@@ -156,6 +154,12 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // =========================
         // Compute bitwise majority.
         // =========================
+        let majority_limbs = bitwise_majority(&mut layouter, &config, BitwiseMajorityInput {
+            row_offset: 8,
+            a_limbs: &limb_cells[0],
+            b_limbs: &limb_cells[1],
+            c_limbs: &limb_cells[2],
+        })?;
 
         Ok(())
     }
