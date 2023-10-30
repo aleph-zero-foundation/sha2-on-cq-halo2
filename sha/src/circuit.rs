@@ -5,10 +5,7 @@ mod tables;
 mod tests;
 
 use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::{
-    bitwise_choose, bitwise_majority, compose, decompose, initial_assignment, BitwiseInput,
-    LimbCompositionInput, LimbDecompositionInput,
-};
+use crate::circuit::synthesis::{bitwise_choose, bitwise_majority, compose, decompose, initial_assignment, rotation0, BitwiseInput, CelledValue, LimbCompositionInput, LimbDecompositionInput, RotationInput, rotation1};
 use crate::circuit::tables::{
     configure_choose_table, configure_decomposition_table, configure_majority_table,
     configure_rot0_table, configure_rot1_table, ShaTables,
@@ -85,9 +82,8 @@ impl<E: MultiMillerLoop, L> ShaCircuit<E, L> {
     fn limb_decomposition_inputs(
         &self,
         row_offset: usize,
-        input_cells: [AssignedCell<&Assigned<E::Scalar>, E::Scalar>; 8],
+        input_cells: &[CelledValue<E::Scalar>; 8],
     ) -> Vec<LimbDecompositionInput<E::Scalar>> {
-        let words = [self.a, self.b, self.c, self.e, self.f, self.g];
         let cells = [
             &input_cells[0],
             &input_cells[1],
@@ -101,8 +97,8 @@ impl<E: MultiMillerLoop, L> ShaCircuit<E, L> {
         (0..6)
             .map(move |idx| LimbDecompositionInput {
                 row: row_offset + idx,
-                origin_cell: *cells[idx].cell(),
-                source_value: words[idx],
+                origin_cell: *cells[idx].cell.cell(),
+                source_value: cells[idx].value,
                 name: names[idx],
             })
             .collect::<Vec<_>>()
@@ -149,7 +145,7 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // Decompose a,b,c,e,f,g into shorter limbs.
         // =========================================
         let limb_cells: Vec<_> = self
-            .limb_decomposition_inputs(2, input_cells)
+            .limb_decomposition_inputs(2, &input_cells)
             .into_iter()
             .map(|input| decompose::<_, L>(&mut layouter, &config, input))
             .collect::<Result<Vec<_>, _>>()?;
@@ -203,6 +199,26 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
             LimbCompositionInput {
                 row_offset: 15,
                 limbs: choose_limbs,
+            },
+        )?;
+
+        // ==================
+        // Compute rotations.
+        // ==================
+        let rot_0 = rotation0(
+            &mut layouter,
+            &config,
+            RotationInput {
+                row_offset: 16,
+                input: &input_cells[0],
+            },
+        )?;
+        let rot_1 = rotation1(
+            &mut layouter,
+            &config,
+            RotationInput {
+                row_offset: 17,
+                input: &input_cells[4],
             },
         )?;
 

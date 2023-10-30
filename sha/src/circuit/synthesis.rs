@@ -12,7 +12,8 @@ use halo2_proofs::plonk::Assigned;
 pub use initial_assignment::*;
 pub use limb_composition::*;
 pub use limb_decomposition::*;
-
+mod rotation;
+pub use rotation::*;
 pub struct CelledValue<'assign, F: Field> {
     pub cell: AssignedCell<&'assign Assigned<F>, F>,
     pub value: Value<F>,
