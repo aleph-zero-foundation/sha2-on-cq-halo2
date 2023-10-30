@@ -1,10 +1,17 @@
-use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::{CelledValue, LimbDecomposition};
-use crate::tables::Limbs;
-use halo2_proofs::arithmetic::{Field, FieldExt};
-use halo2_proofs::circuit::{AssignedCell, Cell, Layouter, Value};
-use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
-use halo2_proofs::plonk::{Assigned, Error};
+use halo2_proofs::{
+    arithmetic::{Field},
+    circuit::{Layouter, Value},
+    halo2curves::pairing::MultiMillerLoop,
+    plonk::{Error},
+};
+
+use crate::{
+    circuit::{
+        config::ShaConfig,
+        synthesis::{CelledValue, LimbDecomposition},
+    },
+    tables::Limbs,
+};
 
 pub struct LimbCompositionInput<'assign, F: Field> {
     pub row_offset: usize,

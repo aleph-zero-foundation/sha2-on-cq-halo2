@@ -4,9 +4,11 @@ mod limb_composition;
 mod limb_decomposition;
 
 pub use bitwise::*;
-use halo2_proofs::arithmetic::Field;
-use halo2_proofs::circuit::{AssignedCell, Cell, Value};
-use halo2_proofs::plonk::Assigned;
+use halo2_proofs::{
+    arithmetic::Field,
+    circuit::{AssignedCell, Value},
+    plonk::Assigned,
+};
 pub use initial_assignment::*;
 pub use limb_composition::*;
 pub use limb_decomposition::*;

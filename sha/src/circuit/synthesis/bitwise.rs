@@ -1,12 +1,21 @@
-use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::bitwise::BitwiseOperation::Choose;
-use crate::circuit::synthesis::bitwise::LimbPart::{X, Y, Z};
-use crate::circuit::synthesis::{CelledValue, LimbDecomposition};
-use halo2_proofs::arithmetic::Field;
-use halo2_proofs::circuit::{Cell, Layouter, Value};
-use halo2_proofs::halo2curves::pairing::{Engine, MultiMillerLoop};
-use halo2_proofs::plonk::{Error, Selector};
+use halo2_proofs::{
+    arithmetic::Field,
+    circuit::{Cell, Layouter, Value},
+    halo2curves::pairing::{Engine, MultiMillerLoop},
+    plonk::{Error, Selector},
+};
 use BitwiseOperation::Majority;
+
+use crate::circuit::{
+    config::ShaConfig,
+    synthesis::{
+        bitwise::{
+            BitwiseOperation::Choose,
+            LimbPart::{X, Y, Z},
+        },
+        CelledValue, LimbDecomposition,
+    },
+};
 
 pub struct BitwiseInput<'assign, 'limb, F: Field> {
     pub row_offset: usize,

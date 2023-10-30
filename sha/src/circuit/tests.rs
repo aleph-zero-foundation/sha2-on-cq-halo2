@@ -1,14 +1,20 @@
-use crate::circuit::tables::DecompositionTables;
-use crate::circuit::{ShaCircuit, ShaTables};
-use crate::tables;
-use crate::tables::{decompose_table, Limbs, TinyLimbs};
-use halo2_proofs::arithmetic::Field;
-use halo2_proofs::dev::MockProver;
-use halo2_proofs::halo2curves::bn256::{Bn256, Fr};
-use halo2_proofs::halo2curves::pairing::Engine;
-use halo2_proofs::plonk::static_lookup::{StaticTable, StaticTableValues};
-use halo2_proofs::poly::kzg::commitment::TableSRS;
+use halo2_proofs::{
+    arithmetic::Field,
+    dev::MockProver,
+    halo2curves::{
+        bn256::{Bn256, Fr},
+        pairing::Engine,
+    },
+    plonk::static_lookup::{StaticTable, StaticTableValues},
+    poly::kzg::commitment::TableSRS,
+};
 use rand_core::SeedableRng;
+
+use crate::{
+    circuit::{tables::DecompositionTables, ShaCircuit, ShaTables},
+    tables,
+    tables::{decompose_table, Limbs, TinyLimbs},
+};
 
 fn generate_tables<L: Limbs>(params: &TableSRS<Bn256>, k: u32) -> ShaTables<Bn256> {
     let n = 1 << k;

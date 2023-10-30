@@ -10,11 +10,14 @@
 //! we will need 2 rows. A cost for that is a need for a selector, which will be used to trigger
 //! 'cross-equality' gate only once.
 
-use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
-use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
-use halo2_proofs::plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector};
-use halo2_proofs::poly::Rotation;
 use std::marker::PhantomData;
+
+use halo2_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner, Value},
+    halo2curves::pairing::MultiMillerLoop,
+    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
+    poly::Rotation,
+};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -110,9 +113,12 @@ impl<E: MultiMillerLoop> Circuit<E> for SimpleCircuit<E> {
 
 #[cfg(test)]
 mod tests {
+    use halo2_proofs::{
+        dev::MockProver,
+        halo2curves::bn256::{Bn256, Fr},
+    };
+
     use crate::simple_circuit::SimpleCircuit;
-    use halo2_proofs::dev::MockProver;
-    use halo2_proofs::halo2curves::bn256::{Bn256, Fr};
 
     #[test]
     fn test_positive_case() {

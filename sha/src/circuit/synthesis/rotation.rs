@@ -1,9 +1,11 @@
-use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::CelledValue;
-use halo2_proofs::arithmetic::Field;
-use halo2_proofs::circuit::{Layouter, Value};
-use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
-use halo2_proofs::plonk::{Error, Selector};
+use halo2_proofs::{
+    arithmetic::Field,
+    circuit::{Layouter, Value},
+    halo2curves::pairing::MultiMillerLoop,
+    plonk::{Error, Selector},
+};
+
+use crate::circuit::{config::ShaConfig, synthesis::CelledValue};
 
 pub struct RotationInput<'assign, 'input, F: Field> {
     pub input: &'input CelledValue<'assign, F>,

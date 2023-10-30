@@ -1,6 +1,7 @@
-use crate::tables::limbs::Bits;
 use halo2_proofs::halo2curves::FieldExt;
 pub use limbs::{Limbs, LongLimbs, ShortLimbs, TinyLimbs};
+
+use crate::tables::limbs::Bits;
 pub type Table = Vec<(u64, u64, u64, u64)>;
 
 mod limbs {

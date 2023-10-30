@@ -1,12 +1,12 @@
 #![feature(array_zip)]
 
-use crate::circuit::ShaCircuit;
-use crate::simple_circuit::SimpleCircuit;
-use crate::tables::ShortLimbs;
-use halo2_proofs::halo2curves::bn256::Bn256;
-use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
-use halo2_proofs::plonk::Circuit;
+use halo2_proofs::{
+    halo2curves::{bn256::Bn256, pairing::MultiMillerLoop},
+    plonk::Circuit,
+};
 use plotters::prelude::*;
+
+use crate::{circuit::ShaCircuit, simple_circuit::SimpleCircuit, tables::ShortLimbs};
 
 mod circuit;
 mod simple_circuit;

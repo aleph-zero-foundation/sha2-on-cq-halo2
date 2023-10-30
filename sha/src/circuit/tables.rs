@@ -1,10 +1,14 @@
-use crate::circuit::config::ShaConfig;
-use crate::circuit::tables::columns::*;
-use halo2_proofs::arithmetic::Field;
-use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
-use halo2_proofs::plonk::static_lookup::{StaticTable, StaticTableId};
-use halo2_proofs::plonk::{ConstraintSystem, Selector};
-use halo2_proofs::poly::Rotation;
+use halo2_proofs::{
+    arithmetic::Field,
+    halo2curves::pairing::MultiMillerLoop,
+    plonk::{
+        static_lookup::{StaticTable, StaticTableId},
+        ConstraintSystem, Selector,
+    },
+    poly::Rotation,
+};
+
+use crate::circuit::{config::ShaConfig, tables::columns::*};
 
 pub mod columns {
     pub const DECOMPOSITION_X_COLUMN: &str = "decomposition_x";
@@ -160,8 +164,7 @@ fn configure_table<F: Field>(
             .zip(config.advices)
             .map(|(col_name, advice)| {
                 (
-                    selector.clone()
-                        * meta.query_advice(advice, Rotation::cur()),
+                    selector.clone() * meta.query_advice(advice, Rotation::cur()),
                     StaticTableId(col_name.into()),
                 )
             })

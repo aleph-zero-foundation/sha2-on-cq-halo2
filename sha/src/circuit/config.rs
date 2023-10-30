@@ -1,5 +1,7 @@
-use halo2_proofs::arithmetic::Field;
-use halo2_proofs::plonk::{Advice, Column, ConstraintSystem, Instance, Selector};
+use halo2_proofs::{
+    arithmetic::Field,
+    plonk::{Advice, Column, ConstraintSystem, Instance, Selector},
+};
 
 pub const ADVICE_NUM: usize = 4;
 pub const LOOKUP_SELECTOR_NUM: usize = 5;

@@ -4,17 +4,29 @@ mod tables;
 #[cfg(test)]
 mod tests;
 
-use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::{bitwise_majority, compose, decompose, initial_assignment, rotation0, BitwiseInput, CelledValue, LimbCompositionInput, LimbDecompositionInput, RotationInput, rotation1, bitwise_choose};
-use crate::circuit::tables::{
-    configure_choose_table, configure_decomposition_table, configure_majority_table,
-    configure_rot0_table, configure_rot1_table, ShaTables,
-};
-use crate::tables::Limbs;
-use halo2_proofs::circuit::{AssignedCell, Layouter, SimpleFloorPlanner, Value};
-use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
-use halo2_proofs::plonk::{Assigned, Circuit, ConstraintSystem, Error};
 use std::marker::PhantomData;
+
+use halo2_proofs::{
+    circuit::{Layouter, SimpleFloorPlanner, Value},
+    halo2curves::pairing::MultiMillerLoop,
+    plonk::{Circuit, ConstraintSystem, Error},
+};
+
+use crate::{
+    circuit::{
+        config::ShaConfig,
+        synthesis::{
+            bitwise_choose, bitwise_majority, compose, decompose, initial_assignment, rotation0,
+            rotation1, BitwiseInput, CelledValue, LimbCompositionInput, LimbDecompositionInput,
+            RotationInput,
+        },
+        tables::{
+            configure_choose_table, configure_decomposition_table, configure_majority_table,
+            configure_rot0_table, configure_rot1_table, ShaTables,
+        },
+    },
+    tables::Limbs,
+};
 
 #[derive(Debug, Clone)]
 pub struct ShaCircuit<E: MultiMillerLoop, L> {

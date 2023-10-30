@@ -1,8 +1,10 @@
-use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::CelledValue;
-use halo2_proofs::circuit::{AssignedCell, Layouter, Value};
-use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
-use halo2_proofs::plonk::{Assigned, Error};
+use halo2_proofs::{
+    circuit::{Layouter, Value},
+    halo2curves::pairing::MultiMillerLoop,
+    plonk::{Error},
+};
+
+use crate::circuit::{config::ShaConfig, synthesis::CelledValue};
 
 const LAYOUT_WIDTH: usize = 4;
 
