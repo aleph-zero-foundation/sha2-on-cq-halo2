@@ -5,7 +5,7 @@ mod tables;
 mod tests;
 
 use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::{bitwise_choose, bitwise_majority, compose, decompose, initial_assignment, rotation0, BitwiseInput, CelledValue, LimbCompositionInput, LimbDecompositionInput, RotationInput, rotation1};
+use crate::circuit::synthesis::{bitwise_majority, compose, decompose, initial_assignment, rotation0, BitwiseInput, CelledValue, LimbCompositionInput, LimbDecompositionInput, RotationInput, rotation1, bitwise_choose};
 use crate::circuit::tables::{
     configure_choose_table, configure_decomposition_table, configure_majority_table,
     configure_rot0_table, configure_rot1_table, ShaTables,
@@ -193,7 +193,7 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // ===================================
         // Combine chooses into a single word.
         // ===================================
-        let majority = compose(
+        let choose = compose(
             &mut layouter,
             &config,
             LimbCompositionInput {
