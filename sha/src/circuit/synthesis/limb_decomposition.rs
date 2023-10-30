@@ -4,6 +4,7 @@ use halo2_proofs::arithmetic::{Field, FieldExt};
 use halo2_proofs::circuit::{AssignedCell, Cell, Layouter, Value};
 use halo2_proofs::halo2curves::pairing::MultiMillerLoop;
 use halo2_proofs::plonk::{Assigned, Error};
+use crate::circuit::synthesis::LimbDecomposition;
 
 pub struct LimbDecompositionInput<F: Field> {
     /// The row in which the decomposition gate happening.
@@ -16,24 +17,11 @@ pub struct LimbDecompositionInput<F: Field> {
     pub name: &'static str,
 }
 
-pub struct LimbDecompositionOutput<'assign, F: Field> {
-    /// The cell containing the first limb.
-    pub x_cell: AssignedCell<&'assign Assigned<F>, F>,
-    /// The cell containing the second limb.
-    pub y_cell: AssignedCell<&'assign Assigned<F>, F>,
-    /// The cell containing the third limb.
-    pub z_cell: AssignedCell<&'assign Assigned<F>, F>,
-
-    pub x_value: Value<F>,
-    pub y_value: Value<F>,
-    pub z_value: Value<F>,
-}
-
 pub fn decompose<'assign, E: MultiMillerLoop, L: Limbs>(
     layouter: &mut impl Layouter<E::Scalar, E = E>,
     config: &ShaConfig,
     input: LimbDecompositionInput<E::Scalar>,
-) -> Result<LimbDecompositionOutput<'assign, E::Scalar>, Error> {
+) -> Result<LimbDecomposition<'assign, E::Scalar>, Error> {
     layouter.assign_region(
         || format!("{}: limb decomposition", input.name),
         |mut region| {
@@ -67,7 +55,7 @@ pub fn decompose<'assign, E: MultiMillerLoop, L: Limbs>(
             let y_cell = region.assign_advice(config.advices[2], input.row, y)?;
             let z_cell = region.assign_advice(config.advices[3], input.row, z)?;
 
-            Ok(LimbDecompositionOutput {
+            Ok(LimbDecomposition {
                 x_cell,
                 y_cell,
                 z_cell,
