@@ -23,7 +23,7 @@ pub fn decompose<'assign, E: MultiMillerLoop, L: Limbs>(
     input: LimbDecompositionInput<E::Scalar>,
 ) -> Result<LimbDecomposition<'assign, E::Scalar>, Error> {
     layouter.assign_region(
-        || format!("{}: limb decomposition", input.name),
+        || format!("limb decomposition: {}", input.name),
         |mut region| {
             // Enable this gate with corresponding selector. This will constrain the values to be
             // computed correctly (by a lookup).

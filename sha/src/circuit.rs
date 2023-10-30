@@ -5,7 +5,10 @@ mod tables;
 mod tests;
 
 use crate::circuit::config::ShaConfig;
-use crate::circuit::synthesis::{bitwise_majority, BitwiseMajorityInput, compose, decompose, initial_assignment, LimbCompositionInput, LimbDecompositionInput};
+use crate::circuit::synthesis::{
+    bitwise_choose, bitwise_majority, compose, decompose, initial_assignment, BitwiseInput,
+    LimbCompositionInput, LimbDecompositionInput,
+};
 use crate::circuit::tables::{
     configure_choose_table, configure_decomposition_table, configure_majority_table,
     configure_rot0_table, configure_rot1_table, ShaTables,
@@ -154,20 +157,54 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         // =========================
         // Compute bitwise majority.
         // =========================
-        let majority_limbs = bitwise_majority(&mut layouter, &config, BitwiseMajorityInput {
-            row_offset: 8,
-            a_limbs: &limb_cells[0],
-            b_limbs: &limb_cells[1],
-            c_limbs: &limb_cells[2],
-        })?;
+        let majority_limbs = bitwise_majority(
+            &mut layouter,
+            &config,
+            BitwiseInput {
+                row_offset: 8,
+                limbs1: &limb_cells[0],
+                limbs2: &limb_cells[1],
+                limbs3: &limb_cells[2],
+            },
+        )?;
 
         // ======================================
         // Combine majorities into a single word.
         // ======================================
-        let majority = compose(&mut layouter, &config, LimbCompositionInput {
-            row_offset: 11,
-            limbs: majority_limbs,
-        })?;
+        let majority = compose(
+            &mut layouter,
+            &config,
+            LimbCompositionInput {
+                row_offset: 11,
+                limbs: majority_limbs,
+            },
+        )?;
+
+        // =======================
+        // Compute bitwise choose.
+        // =======================
+        let choose_limbs = bitwise_choose(
+            &mut layouter,
+            &config,
+            BitwiseInput {
+                row_offset: 12,
+                limbs1: &limb_cells[3],
+                limbs2: &limb_cells[4],
+                limbs3: &limb_cells[5],
+            },
+        )?;
+
+        // ===================================
+        // Combine chooses into a single word.
+        // ===================================
+        let majority = compose(
+            &mut layouter,
+            &config,
+            LimbCompositionInput {
+                row_offset: 15,
+                limbs: choose_limbs,
+            },
+        )?;
 
         Ok(())
     }
