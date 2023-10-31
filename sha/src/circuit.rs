@@ -1,25 +1,26 @@
 mod config;
+mod gates;
 mod synthesis;
 mod tables;
 #[cfg(test)]
 mod tests;
-mod gates;
 
 use std::marker::PhantomData;
 
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
-    halo2curves::pairing::MultiMillerLoop,
+    halo2curves::pairing::{Engine, MultiMillerLoop},
     plonk::{Circuit, ConstraintSystem, Error},
 };
 
 use crate::{
     circuit::{
         config::ShaConfig,
+        gates::configure_addition_gate,
         synthesis::{
             bitwise_choose, bitwise_majority, compose, decompose, finalize_round,
-            initial_assignment, rotation0, rotation1, BitwiseInput, CelledValue, FinalInput,
-            LimbCompositionInput, LimbDecompositionInput, RotationInput,
+            initial_assignment, register_tables, rotation0, rotation1, BitwiseInput, CelledValue,
+            FinalInput, LimbCompositionInput, LimbDecompositionInput, RotationInput,
         },
         tables::{
             configure_choose_table, configure_decomposition_table, configure_majority_table,
@@ -28,7 +29,6 @@ use crate::{
     },
     tables::Limbs,
 };
-use crate::circuit::gates::configure_addition_gate;
 
 #[derive(Debug, Clone)]
 pub struct ShaCircuit<E: MultiMillerLoop, L> {
@@ -146,6 +146,11 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         config: Self::Config,
         mut layouter: impl Layouter<E::Scalar, E = E>,
     ) -> Result<(), Error> {
+        // =======================
+        // Register static tables.
+        // =======================
+        register_tables(&mut layouter, &self.tables);
+
         // ==========================================================================
         // Assign inputs (a..h) and copy 6 of them right away to the instance column.
         // ==========================================================================

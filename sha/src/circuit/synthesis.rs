@@ -15,6 +15,8 @@ pub use limb_decomposition::*;
 pub use r#final::*;
 mod r#final;
 mod rotation;
+mod tables;
+pub use tables::*;
 
 pub use rotation::*;
 pub struct CelledValue<'assign, F: Field> {

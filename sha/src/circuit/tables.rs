@@ -20,9 +20,7 @@ pub mod columns {
     pub const BITWISE_Z_COLUMN: &str = "bitwise_z";
     pub const BITWISE_MAJORITY_COLUMN: &str = "majority";
     pub const BITWISE_CHOOSE_COLUMN: &str = "choose";
-    pub const ROTATION_X_COLUMN: &str = "rotation_x";
-    pub const ROTATION_Y_COLUMN: &str = "rotation_y";
-    pub const ROTATION_Z_COLUMN: &str = "rotation_z";
+    pub const ROTATION_INPUT_COLUMN: &str = "rotation_input";
     pub const ROTATION_0_COLUMN: &str = "rotation0";
     pub const ROTATION_1_COLUMN: &str = "rotation1";
 }
@@ -46,9 +44,7 @@ pub struct BitwiseTables<E: MultiMillerLoop> {
 
 #[derive(Debug, Clone, Default)]
 pub struct RotationTables<E: MultiMillerLoop> {
-    pub rot_x: StaticTable<E>,
-    pub rot_y: StaticTable<E>,
-    pub rot_z: StaticTable<E>,
+    pub rot_input: StaticTable<E>,
     pub rot0: StaticTable<E>,
     pub rot1: StaticTable<E>,
 }
@@ -94,36 +90,32 @@ impl TableType {
         }
     }
 
-    pub fn column_names(self) -> [&'static str; 4] {
+    pub fn column_names(self) -> Vec<&'static str> {
         match self {
-            TableType::Decomposition => [
+            TableType::Decomposition => vec![
                 DECOMPOSITION_X_COLUMN,
                 DECOMPOSITION_Y_COLUMN,
                 DECOMPOSITION_Z_COLUMN,
                 DECOMPOSITION_RESULT_COLUMN,
             ],
-            TableType::BitwiseMajority => [
+            TableType::BitwiseMajority => vec![
                 BITWISE_X_COLUMN,
                 BITWISE_Y_COLUMN,
                 BITWISE_Z_COLUMN,
                 BITWISE_MAJORITY_COLUMN,
             ],
-            TableType::BitwiseChoose => [
+            TableType::BitwiseChoose => vec![
                 BITWISE_X_COLUMN,
                 BITWISE_Y_COLUMN,
                 BITWISE_Z_COLUMN,
                 BITWISE_CHOOSE_COLUMN,
             ],
-            TableType::Rotation0 => [
-                ROTATION_X_COLUMN,
-                ROTATION_Y_COLUMN,
-                ROTATION_Z_COLUMN,
+            TableType::Rotation0 => vec![
+                ROTATION_INPUT_COLUMN,
                 ROTATION_0_COLUMN,
             ],
-            TableType::Rotation1 => [
-                ROTATION_X_COLUMN,
-                ROTATION_Y_COLUMN,
-                ROTATION_Z_COLUMN,
+            TableType::Rotation1 => vec![
+                ROTATION_INPUT_COLUMN,
                 ROTATION_1_COLUMN,
             ],
         }
@@ -161,6 +153,7 @@ fn configure_table<F: Field>(
 
         table_type
             .column_names()
+            .into_iter()
             .zip(config.advices)
             .map(|(col_name, advice)| {
                 (
@@ -168,6 +161,6 @@ fn configure_table<F: Field>(
                     StaticTableId(col_name.into()),
                 )
             })
-            .to_vec()
+            .collect()
     });
 }
