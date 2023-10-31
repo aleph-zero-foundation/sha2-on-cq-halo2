@@ -29,7 +29,7 @@ pub fn register_tables<E: MultiMillerLoop>(
     );
 }
 
-fn register<E: MultiMillerLoop, I: Iterator<Item = (&'static str, &StaticTable<E>)>>(
+fn register<'table, E: MultiMillerLoop, I: IntoIterator<Item = (&'static str, &'table StaticTable<E>)>>(
     layouter: &mut impl Layouter<<E as Engine>::Scalar, E = E>,
     tables: I,
 ) {
