@@ -1,78 +1,39 @@
 use halo2_proofs::{
     circuit::Layouter,
     halo2curves::pairing::{Engine, MultiMillerLoop},
-    plonk::{static_lookup::StaticTableId, Error},
+    plonk::static_lookup::{StaticTable, StaticTableId},
 };
 
-use crate::circuit::tables::{
-    columns::*, BitwiseTables, DecompositionTables, RotationTables, ShaTables,
-};
+use crate::circuit::tables::{columns::*, ShaTables};
 
 pub fn register_tables<E: MultiMillerLoop>(
     layouter: &mut impl Layouter<<E as Engine>::Scalar, E = E>,
     tables: &ShaTables<E>,
 ) {
-    register_decomposition(layouter, &tables.decomposition);
-    register_bitwise(layouter, &tables.bitwise);
-    register_rotation(layouter, &tables.rotation);
-}
-
-fn register_decomposition<E: MultiMillerLoop>(
-    layouter: &mut impl Layouter<<E as Engine>::Scalar, E = E>,
-    tables: &DecompositionTables<E>,
-) {
-    layouter.register_static_table(
-        StaticTableId(DECOMPOSITION_X_COLUMN.into()),
-        tables.decomp_x.clone(),
-    );
-    layouter.register_static_table(
-        StaticTableId(DECOMPOSITION_Y_COLUMN.into()),
-        tables.decomp_y.clone(),
-    );
-    layouter.register_static_table(
-        StaticTableId(DECOMPOSITION_Z_COLUMN.into()),
-        tables.decomp_z.clone(),
-    );
-    layouter.register_static_table(
-        StaticTableId(DECOMPOSITION_RESULT_COLUMN.into()),
-        tables.decomp.clone(),
+    register(
+        layouter,
+        [
+            (DECOMPOSITION_X_COLUMN, &tables.decomposition.decomp_x),
+            (DECOMPOSITION_Y_COLUMN, &tables.decomposition.decomp_y),
+            (DECOMPOSITION_Z_COLUMN, &tables.decomposition.decomp_z),
+            (DECOMPOSITION_RESULT_COLUMN, &tables.decomposition.decomp),
+            (BITWISE_X_COLUMN, &tables.bitwise.bitwise_x),
+            (BITWISE_Y_COLUMN, &tables.bitwise.bitwise_y),
+            (BITWISE_Z_COLUMN, &tables.bitwise.bitwise_z),
+            (BITWISE_MAJORITY_COLUMN, &tables.bitwise.maj),
+            (BITWISE_CHOOSE_COLUMN, &tables.bitwise.choose),
+            (ROTATION_INPUT_COLUMN, &tables.rotation.rot_input),
+            (ROTATION_0_COLUMN, &tables.rotation.rot0),
+            (ROTATION_1_COLUMN, &tables.rotation.rot1),
+        ],
     );
 }
 
-fn register_bitwise<E: MultiMillerLoop>(
+fn register<E: MultiMillerLoop, I: Iterator<Item = (&'static str, &StaticTable<E>)>>(
     layouter: &mut impl Layouter<<E as Engine>::Scalar, E = E>,
-    tables: &BitwiseTables<E>,
+    tables: I,
 ) {
-    layouter.register_static_table(
-        StaticTableId(BITWISE_X_COLUMN.into()),
-        tables.bitwise_x.clone(),
-    );
-    layouter.register_static_table(
-        StaticTableId(BITWISE_Y_COLUMN.into()),
-        tables.bitwise_y.clone(),
-    );
-    layouter.register_static_table(
-        StaticTableId(BITWISE_Z_COLUMN.into()),
-        tables.bitwise_z.clone(),
-    );
-    layouter.register_static_table(
-        StaticTableId(BITWISE_MAJORITY_COLUMN.into()),
-        tables.maj.clone(),
-    );
-    layouter.register_static_table(
-        StaticTableId(BITWISE_CHOOSE_COLUMN.into()),
-        tables.choose.clone(),
-    );
-}
-
-fn register_rotation<E: MultiMillerLoop>(
-    layouter: &mut impl Layouter<<E as Engine>::Scalar, E = E>,
-    tables: &RotationTables<E>,
-) {
-    layouter.register_static_table(
-        StaticTableId(ROTATION_INPUT_COLUMN.into()),
-        tables.rot_input.clone(),
-    );
-    layouter.register_static_table(StaticTableId(ROTATION_0_COLUMN.into()), tables.rot0.clone());
-    layouter.register_static_table(StaticTableId(ROTATION_1_COLUMN.into()), tables.rot1.clone());
+    for (id, table) in tables {
+        layouter.register_static_table(StaticTableId(id.into()), table.clone());
+    }
 }
