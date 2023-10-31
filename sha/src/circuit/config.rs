@@ -4,7 +4,7 @@ use halo2_proofs::{
 };
 
 pub const ADVICE_NUM: usize = 4;
-pub const LOOKUP_SELECTOR_NUM: usize = 5;
+pub const LOOKUP_SELECTOR_NUM: usize = 6;
 
 #[derive(Clone, Debug)]
 pub struct ShaConfig {
@@ -60,5 +60,9 @@ impl ShaConfig {
 
     pub fn rot1_selector(&self) -> Selector {
         self.lookup_selectors[4]
+    }
+
+    pub fn addition_selector(&self) -> Selector {
+        self.lookup_selectors[5]
     }
 }

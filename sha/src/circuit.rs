@@ -3,6 +3,7 @@ mod synthesis;
 mod tables;
 #[cfg(test)]
 mod tests;
+mod gates;
 
 use std::marker::PhantomData;
 
@@ -16,9 +17,9 @@ use crate::{
     circuit::{
         config::ShaConfig,
         synthesis::{
-            bitwise_choose, bitwise_majority, compose, decompose, initial_assignment, rotation0,
-            rotation1, BitwiseInput, CelledValue, LimbCompositionInput, LimbDecompositionInput,
-            RotationInput,
+            bitwise_choose, bitwise_majority, compose, decompose, finalize_round,
+            initial_assignment, rotation0, rotation1, BitwiseInput, CelledValue, FinalInput,
+            LimbCompositionInput, LimbDecompositionInput, RotationInput,
         },
         tables::{
             configure_choose_table, configure_decomposition_table, configure_majority_table,
@@ -27,6 +28,7 @@ use crate::{
     },
     tables::Limbs,
 };
+use crate::circuit::gates::configure_addition_gate;
 
 #[derive(Debug, Clone)]
 pub struct ShaCircuit<E: MultiMillerLoop, L> {
@@ -134,6 +136,8 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
         configure_rot0_table(meta, &config);
         configure_rot1_table(meta, &config);
 
+        configure_addition_gate(meta, &config);
+
         config
     }
 
@@ -231,6 +235,23 @@ impl<E: MultiMillerLoop, L: Limbs> Circuit<E> for ShaCircuit<E, L> {
             RotationInput {
                 row_offset: 17,
                 input: &input_cells[4],
+            },
+        )?;
+
+        // ====================
+        // Compute temp, e', a'
+        // ====================
+        finalize_round(
+            &mut layouter,
+            &config,
+            FinalInput {
+                row_offset: 18,
+                d: &input_cells[3],
+                h: &input_cells[7],
+                choose: &choose,
+                maj: &majority,
+                rot0a: &rot_0,
+                rot1e: &rot_1,
             },
         )?;
 

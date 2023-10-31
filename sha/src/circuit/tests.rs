@@ -79,7 +79,7 @@ fn test_positive_case() {
             0.into(),
             1.into(),
             2.into(),
-            3.into(),
+            10.into(),
             4.into(),
             5.into(),
             6.into(),
