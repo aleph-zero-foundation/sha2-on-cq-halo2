@@ -18,26 +18,26 @@ pub struct FinalInput<'assign, 'cell, F: Field> {
     pub rot1e: &'cell CelledValue<'assign, F>,
 }
 
-pub fn finalize_round<'assign, E: MultiMillerLoop>(
+pub fn finalize_round<E: MultiMillerLoop>(
     layouter: &mut impl Layouter<E::Scalar, E = E>,
     config: &ShaConfig,
     input: FinalInput<E::Scalar>,
 ) -> Result<(), Error> {
     let temp = row(layouter, config, "compute temp", input.row_offset, &[
-        &input.h,
-        &input.rot1e,
-        &input.choose,
+        input.h,
+        input.rot1e,
+        input.choose,
     ])?;
 
     let e_prime = row(layouter, config, "compute e'", input.row_offset + 1, &[
-        &input.d,
+        input.d,
         &temp,
     ])?;
     layouter.constrain_instance(*e_prime.cell.cell(), config.instance, 4);
 
     let a_prime = row(layouter, config, "compute a'", input.row_offset + 2, &[
-        &input.maj,
-        &input.rot0a,
+        input.maj,
+        input.rot0a,
         &temp,
     ])?;
     layouter.constrain_instance(*a_prime.cell.cell(), config.instance, 0);

@@ -1,8 +1,8 @@
 use halo2_proofs::{
     arithmetic::{Field, FieldExt},
-    circuit::{Cell, Layouter, Value},
+    circuit::Layouter,
     halo2curves::pairing::MultiMillerLoop,
-    plonk::{Error},
+    plonk::Error,
 };
 
 use crate::{
@@ -13,21 +13,16 @@ use crate::{
     tables::Limbs,
 };
 
-pub struct LimbDecompositionInput<F: Field> {
-    /// The row in which the decomposition gate happening.
+pub struct LimbDecompositionInput<'assign, 'cell, F: Field> {
     pub row: usize,
-    /// The cell from which the word (to be decomposed) should 'copied' from.
-    pub origin_cell: Cell,
-    /// The value of the word to be decomposed.
-    pub source_value: Value<F>,
-    /// Identifier for the gate.
+    pub source: &'cell CelledValue<'assign, F>,
     pub name: &'static str,
 }
 
-pub fn decompose<'assign, E: MultiMillerLoop, L: Limbs>(
+pub fn decompose<'assign, 'cell, E: MultiMillerLoop, L: Limbs>(
     layouter: &mut impl Layouter<E::Scalar, E = E>,
     config: &ShaConfig,
-    input: LimbDecompositionInput<E::Scalar>,
+    input: LimbDecompositionInput<'assign, 'cell, E::Scalar>,
 ) -> Result<LimbDecomposition<'assign, E::Scalar>, Error> {
     layouter.assign_region(
         || format!("limb decomposition: {}", input.name),
@@ -39,11 +34,11 @@ pub fn decompose<'assign, E: MultiMillerLoop, L: Limbs>(
                 .enable(&mut region, input.row)?;
 
             // Assign value to the word cell.
-            let word = input.source_value;
+            let word = input.source.value;
             let word_cell = region.assign_advice(config.advices[0], input.row, word)?;
 
             // Ensure that the word is correctly copied from the original cell.
-            region.constrain_equal(word_cell.cell(), &input.origin_cell);
+            region.constrain_equal(word_cell.cell(), input.source.cell.cell());
 
             // Compute limbs.
             let shift = L::SECOND_LIMB_LEN;

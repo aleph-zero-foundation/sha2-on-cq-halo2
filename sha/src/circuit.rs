@@ -93,29 +93,20 @@ impl<E: MultiMillerLoop, L> ShaCircuit<E, L> {
         }
     }
 
-    fn limb_decomposition_inputs(
-        &self,
+    fn limb_decomposition_inputs<'this, 'cells, 'assign>(
+        &'this self,
         row_offset: usize,
-        input_cells: &[CelledValue<E::Scalar>; 8],
-    ) -> Vec<LimbDecompositionInput<E::Scalar>> {
-        let cells = [
-            &input_cells[0],
-            &input_cells[1],
-            &input_cells[2],
-            &input_cells[4],
-            &input_cells[5],
-            &input_cells[6],
-        ];
-        let names = ["a", "b", "c", "e", "f", "g"];
-
-        (0..6)
-            .map(move |idx| LimbDecompositionInput {
-                row: row_offset + idx,
-                origin_cell: *cells[idx].cell.cell(),
-                source_value: cells[idx].value,
-                name: names[idx],
+        input_cells: &'cells [CelledValue<'assign, E::Scalar>; 8],
+    ) -> Vec<LimbDecompositionInput<'assign, 'cells, E::Scalar>> {
+        [(0, "a"), (1, "b"), (2, "c"), (4, "e"), (5, "f"), (6, "g")]
+            .into_iter()
+            .enumerate()
+            .map(|(offset, (idx, name))| LimbDecompositionInput {
+                row: row_offset + offset,
+                source: &input_cells[idx],
+                name,
             })
-            .collect::<Vec<_>>()
+            .collect()
     }
 }
 

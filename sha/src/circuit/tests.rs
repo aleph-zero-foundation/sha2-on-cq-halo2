@@ -17,15 +17,15 @@ use crate::{
 };
 
 fn generate_tables<L: Limbs>(params: &TableSRS<Bn256>, k: u32) -> ShaTables<Bn256> {
-    let n = 1 << k;
-
-    let t_maj = tables::create_maj_table::<L>();
-    let (t_x, t_y, t_z, t_maj) = decompose_table::<Fr>(t_maj);
-
-    let table_x = StaticTableValues::new(&t_x, &params.g1());
-    let table_y = StaticTableValues::new(&t_y, &params.g1());
-    let table_z = StaticTableValues::new(&t_z, &params.g1());
-    let table_maj = StaticTableValues::new(&t_maj, &params.g1());
+    // let n = 1 << k;
+    //
+    // let t_maj = tables::create_maj_table::<L>();
+    // let (t_x, t_y, t_z, t_maj) = decompose_table::<Fr>(t_maj);
+    //
+    // let table_x = StaticTableValues::new(&t_x, &params.g1());
+    // let table_y = StaticTableValues::new(&t_y, &params.g1());
+    // let table_z = StaticTableValues::new(&t_z, &params.g1());
+    // let table_maj = StaticTableValues::new(&t_maj, &params.g1());
 
     // let committed_x = table_x.commit(params.g1().len(), params.g2(), n);
     // let committed_y = table_y.commit(params.g1().len(), params.g2(), n);
@@ -33,24 +33,6 @@ fn generate_tables<L: Limbs>(params: &TableSRS<Bn256>, k: u32) -> ShaTables<Bn25
     // let committed_maj = table_maj.commit(params.g1().len(), params.g2(), n);
 
     ShaTables {
-        decomposition: DecompositionTables {
-            decomp_x: StaticTable {
-                opened: Some(table_x),
-                committed: None,
-            },
-            decomp_y: StaticTable {
-                opened: Some(table_y),
-                committed: None,
-            },
-            decomp_z: StaticTable {
-                opened: Some(table_z),
-                committed: None,
-            },
-            decomp: StaticTable {
-                opened: Some(table_maj),
-                committed: None,
-            },
-        },
         ..Default::default()
     }
 }
@@ -64,7 +46,6 @@ fn test_positive_case() {
 
     let mut rng = rand_chacha::ChaCha8Rng::from_seed([41; 32]);
     let s = <Bn256 as Engine>::Scalar::random(&mut rng);
-
     let table_srs = TableSRS::<Bn256>::setup_from_toxic_waste(table_len - 1, table_len, s);
 
     let tables = generate_tables::<TestLimb>(&table_srs, k);

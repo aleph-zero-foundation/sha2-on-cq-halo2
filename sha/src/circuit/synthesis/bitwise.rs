@@ -181,7 +181,7 @@ fn bitwise_row<'assign, 'limb, E: MultiMillerLoop>(
             let offset = input.row_offset + limb_part.offset();
 
             bitwise_operation
-                .selector(&config)
+                .selector(config)
                 .enable(&mut region, offset)?;
 
             let values = limb_part.values(input);

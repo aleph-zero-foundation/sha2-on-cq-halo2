@@ -1,16 +1,13 @@
 use halo2_proofs::{
-    arithmetic::{Field},
+    arithmetic::Field,
     circuit::{Layouter, Value},
     halo2curves::pairing::MultiMillerLoop,
-    plonk::{Error},
+    plonk::Error,
 };
 
-use crate::{
-    circuit::{
-        config::ShaConfig,
-        synthesis::{CelledValue, LimbDecomposition},
-    },
-    tables::Limbs,
+use crate::circuit::{
+    config::ShaConfig,
+    synthesis::{CelledValue, LimbDecomposition},
 };
 
 pub struct LimbCompositionInput<'assign, F: Field> {
